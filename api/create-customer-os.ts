@@ -1,3 +1,4 @@
+export const config = { runtime: "nodejs" };
 import { Client } from "@notionhq/client";
 
 const notion = new Client({

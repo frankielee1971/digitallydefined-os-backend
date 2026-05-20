@@ -2,7 +2,18 @@
   "name": "digitallydefined-os-backend",
   "version": "1.0.0",
   "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
   "dependencies": {
+    "@notionhq/client": "^2.3.0",
+    "firebase-admin": "^13.5.0",
+    "googleapis": "^166.0.0",
     "node-fetch": "^3.3.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "@vercel/node": "^5.5.11",
+    "typescript": "^5.9.3"
   }
 }
