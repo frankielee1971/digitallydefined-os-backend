@@ -1,1 +1,6 @@
-.vercel
+.vercel/
+node_modules/
+.env
+.env.local
+desktop.ini
+digitallydefined-os-backend/
