@@ -1,6 +1,8 @@
 {
   "version": 3,
-  "routes": [
-    { "src": "/api/(.*)", "dest": "/api/$1.js" }
+  "cleanUrls": false,
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/$1.js" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
