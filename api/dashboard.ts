@@ -403,7 +403,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       community,
       leadMagnets: sheetsData?.leadMagnets || [],
       payments: sheetsData?.payments || [],
-      campaigns: sheetsData?.campaigns || [],
+      campaigns,
 
       revenue,
       leads,
