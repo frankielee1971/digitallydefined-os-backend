@@ -1,11 +1,9 @@
-import type { VercelRequest, VercelResponse } from "@vercel/node";
-
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-const formatPct = (n: number) => `${n.toFixed(1)}%`;
-const formatUSD = (n: number) => `$${n.toLocaleString()}`;
+const formatPct = (n) => `${n.toFixed(1)}%`;
+const formatUSD = (n) => `$${n.toLocaleString()}`;
 
-function safeNumber(value: unknown, fallback = 0) {
+function safeNumber(value, fallback = 0) {
   if (typeof value === "number" && !Number.isNaN(value)) return value;
   if (typeof value === "string") {
     const cleaned = value.replace(/[$,%\s,]/g, "");
@@ -15,7 +13,7 @@ function safeNumber(value: unknown, fallback = 0) {
   return fallback;
 }
 
-function safeString(value: unknown, fallback = "") {
+function safeString(value, fallback = "") {
   return typeof value === "string" && value.trim() ? value : fallback;
 }
 
@@ -41,7 +39,7 @@ async function fetchFacebookGroup() {
       member_count: data.member_count || 0,
       error: null,
     };
-  } catch (e: any) {
+  } catch (e) {
     return {
       name: null,
       member_count: 0,
@@ -74,7 +72,7 @@ async function fetchSendPulseToken() {
   return data.access_token || null;
 }
 
-async function fetchSendPulseStats(token: string) {
+async function fetchSendPulseStats(token) {
   try {
     const listsRes = await fetch("https://api.sendpulse.com/addressbooks?limit=10&offset=0", {
       headers: { Authorization: `Bearer ${token}` },
@@ -87,11 +85,11 @@ async function fetchSendPulseStats(token: string) {
     const campaigns = campaignsRes.ok ? await campaignsRes.json() : [];
 
     const totalSubscribers = Array.isArray(lists)
-      ? lists.reduce((sum: number, l: any) => sum + (l.all_email_qty || 0), 0)
+      ? lists.reduce((sum, l) => sum + (l.all_email_qty || 0), 0)
       : 0;
 
     const normalizedCampaigns = Array.isArray(campaigns)
-      ? campaigns.slice(0, 5).map((c: any) => ({
+      ? campaigns.slice(0, 5).map((c) => ({
           name: c.name || c.subject || "Campaign",
           openRate:
             c.statistics?.sent > 0
@@ -106,13 +104,13 @@ async function fetchSendPulseStats(token: string) {
       : [];
 
     const withStats = Array.isArray(campaigns)
-      ? campaigns.filter((c: any) => c.statistics?.sent > 0)
+      ? campaigns.filter((c) => c.statistics?.sent > 0)
       : [];
 
     const avgOpenRate =
       withStats.length > 0
         ? withStats.reduce(
-            (sum: number, c: any) => sum + (c.statistics.opened / c.statistics.sent) * 100,
+            (sum, c) => sum + (c.statistics.opened / c.statistics.sent) * 100,
             0
           ) / withStats.length
         : 0;
@@ -120,7 +118,7 @@ async function fetchSendPulseStats(token: string) {
     const avgClickRate =
       withStats.length > 0
         ? withStats.reduce(
-            (sum: number, c: any) => sum + (c.statistics.clicked / c.statistics.sent) * 100,
+            (sum, c) => sum + (c.statistics.clicked / c.statistics.sent) * 100,
             0
           ) / withStats.length
         : 0;
@@ -134,7 +132,7 @@ async function fetchSendPulseStats(token: string) {
       topCampaigns: normalizedCampaigns,
       error: null,
     };
-  } catch (e: any) {
+  } catch (e) {
     return {
       totalSubscribers: 0,
       emailOpenRate: "0%",
@@ -167,15 +165,7 @@ async function fetchSheetsData() {
 
 // ─── AI Brief ───────────────────────────────────────────────────────────────
 
-async function fetchAIBrief(context: {
-  communityCount: number;
-  emailSubscribers: number;
-  emailOpenRate: string;
-  emailClickRate: string;
-  topAsset: string;
-  revenue: string;
-  communityGrowth: string;
-}) {
+async function fetchAIBrief(context) {
   const apiKey = process.env.OPENROUTER_API_KEY;
 
   if (!apiKey) {
@@ -235,14 +225,8 @@ Be specific to the numbers. Be direct. No hype. No filler.`;
 
 // ─── Alerts Builder ────────────────────────────────────────────────────────
 
-function buildAlerts(checks: {
-  facebookError: string | null;
-  emailError: string | null;
-  sheetsConnected: boolean;
-  openRouterSet: boolean;
-  facebookEnvSet: boolean;
-}) {
-  const alerts: { type: "critical" | "warning" | "info"; source: string; message: string }[] = [];
+function buildAlerts(checks) {
+  const alerts = [];
 
   if (!checks.facebookEnvSet) {
     alerts.push({
@@ -295,7 +279,7 @@ function buildAlerts(checks: {
 
 // ─── Main Handler ──────────────────────────────────────────────────────────
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "https://dashboard.digitallydefined.online");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
@@ -384,9 +368,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const communityMetrics = {
       newMembers:
-        community.filter((m: any) => (m.status || "").toLowerCase().includes("new")).length ||
+        community.filter((m) => (m.status || "").toLowerCase().includes("new")).length ||
         community.length,
-      activeMembers: community.filter((m: any) => (m.activity || "").toLowerCase() === "active")
+      activeMembers: community.filter((m) => (m.activity || "").toLowerCase() === "active")
         .length,
       engagementRate: safeString(sheetsData?.communityEngagementRate, "0%"),
       welcomeCompletion: safeString(sheetsData?.welcomeCompletion, "0%"),
@@ -443,7 +427,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     };
 
     return res.status(200).json(payload);
-  } catch (error: any) {
+  } catch (error) {
     return res.status(500).json({
       error: "Failed to build dashboard payload",
       detail: error?.message || "Unknown error",
