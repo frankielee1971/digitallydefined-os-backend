@@ -24,11 +24,10 @@ export default async function handler(req, res) {
       properties: {},
     });
 
-    // @ts-ignore: Notion SDK types outdated, url exists runtime [TS2322]
     return res.status(200).json({
       success: true,
       newPageId: duplicated.id,
-      url: duplicated.url,
+      url: "url" in duplicated ? duplicated.url : undefined,
     });
   } catch (error: any) {
     console.error("Error duplicating customer OS:", error);
