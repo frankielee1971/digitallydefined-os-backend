@@ -4,10 +4,10 @@ import { google } from "googleapis";
 import { Client as NotionClient } from "@notionhq/client";
 
 // BROKEN IMPORTS (removed for Vercel deployment):
-// import { getGoogleAuth } from "../_utils/googleAuth.js";          // WRONG PATH: file at lib/antigravity/_utils/googleAuth.ts
-// import { getFirestore } from "../_utils/firebaseAdmin.js";        // WRONG PATH: file at lib/antigravity/_utils/firebaseAdmin.ts
-// import { routeTask } from "@/lib/antigravity/router";            // @/ ALIAS NOT CONFIGURED IN VERCEL
-// import { TASK_TYPES } from "@/lib/antigravity/taskTypes";        // @/ ALIAS NOT CONFIGURED IN VERCEL
+// import { getGoogleAuth } from "../_utils/googleAuth.js";
+// import { getFirestore } from "../_utils/firebaseAdmin.js";
+// import { routeTask } from "@/lib/antigravity/router";
+// import { TASK_TYPES } from "@/lib/antigravity/taskTypes";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -158,21 +158,24 @@ async function fetchSendPulseStats(token) {
   }
 }
 
-// ─── Google Sheets ──────────────────────────────────────────────────────────
+// ─── Google Sheets (FIXED) ──────────────────────────────────────────────────
 
 async function fetchSheetsData() {
   const sheetsUrl = process.env.SHEETS_WEBHOOK_URL;
   if (!sheetsUrl) return null;
 
   try {
-    const res = await fetch(
-      `${sheetsUrl}${sheetsUrl.includes("?") ? "&" : "?"}t=${Date.now()}`,
-      { headers: { "Cache-Control": "no-store" } }
-    );
+    const url = `${sheetsUrl}?action=dashboard&t=${Date.now()}`;
+
+    const res = await fetch(url, {
+      headers: { "Cache-Control": "no-store" },
+    });
 
     if (!res.ok) return null;
+
     return await res.json();
-  } catch {
+  } catch (err) {
+    console.error("Sheets fetch failed:", err);
     return null;
   }
 }
@@ -322,7 +325,7 @@ export default async function handler(req, res) {
   const action = typeof req.query.action === "string" ? req.query.action : "";
 
   try {
-    // ── Simple health check (replaces status.js) ────────────────────────────
+    // ── Simple health check ────────────────────────────────────────────────
     if (!action || action === "status") {
       return res.status(200).json({
         status: "ok",
@@ -330,7 +333,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // ── Auth verify (replaces auth/verify.ts) ───────────────────────────────
+    // ── Auth verify ────────────────────────────────────────────────────────
     if (action === "auth.verify") {
       if (!checkDashboardApiKey(req)) {
         return res.status(401).json({ error: "Unauthorized" });
@@ -338,18 +341,18 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
-    // ── AI Recommendations (static) ────────────────────────────────────────
+    // ── AI Recommendations ────────────────────────────────────────────────
     if (action === "ai.recommendations") {
       return res.status(200).json({
         recommendations: [
           "Update the Rank & Rent asset for 'CT Roofing' — competitor activity increased.",
-          "Create a new review follow‑up workflow for Customer OS.",
+          "Create a new review follow-up workflow for Customer OS.",
           "Sync Vault — 12 new assets detected.",
         ],
       });
     }
 
-    // ── Brain Brief (converted from edge) ──────────────────────────────────
+    // ── Brain Brief ────────────────────────────────────────────────────────
     if (action === "brain.brief") {
       const payload = {
         generatedAt: "2026-05-25T17:25:00-04:00",
@@ -402,7 +405,7 @@ export default async function handler(req, res) {
       return res.status(200).json(payload);
     }
 
-    // ── Automation (replaces automation.js) ─────────────────────────────────
+    // ── Automation ─────────────────────────────────────────────────────────
     if (action === "automation.sync") {
       return res.status(200).json({
         status: "success",
@@ -457,7 +460,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // ── Dashboard payload (replaces dashboard.ts) ──────────────────────────
+    // ── Dashboard payload ──────────────────────────────────────────────────
     if (action === "dashboard") {
       if (!checkDashboardApiKey(req)) {
         return res.status(401).json({ error: "Unauthorized" });
@@ -543,252 +546,40 @@ export default async function handler(req, res) {
           ? sheetsData.campaigns
           : spData.topCampaigns;
 
-      const communityMetrics = {
-        newMembers:
-          community.filter((m) =>
-            (m.status || "").toLowerCase().includes("new")
-          ).length || community.length,
-        activeMembers: community.filter(
-          (m) => (m.activity || "").toLowerCase() === "active"
-        ).length,
-        engagementRate: safeString(
-          sheetsData?.communityEngagementRate,
-          "0%"
-        ),
-        welcomeCompletion: safeString(sheetsData?.welcomeCompletion, "0%"),
-        topPosts,
-      };
-
-      const payload = {
-        assetValue,
+      return res.status(200).json({
+        status: "ok",
         communityCount,
-        siteHealth,
-        sentiment,
-        reviews: sheetsData?.reviews || [],
-        competitors: sheetsData?.competitors || [],
-        community,
-        leadMagnets: sheetsData?.leadMagnets || [],
-        payments: sheetsData?.payments || [],
-        campaigns,
-
         revenue,
         leads,
+        topAsset,
+        assetValue,
+        siteHealth,
+        sentiment,
         communityGrowth,
         emailGrowth,
         conversionRate,
-        topAsset,
         churnRisk,
-
-        assets,
         email: {
-          subscribers: spData.totalSubscribers,
+          totalSubscribers: spData.totalSubscribers,
           openRate: spData.emailOpenRate,
           clickRate: spData.emailClickRate,
           replyRate: spData.emailReplyRate,
           revenuePerCampaign: spData.emailRevenuePerCampaign,
-          ...email,
+          topCampaigns: campaigns,
         },
-
+        community,
+        assets,
+        topPosts,
         aiBrief,
         alerts,
-        communityMetrics,
-
-        sourceHealth: {
-          facebook: fbData.error ? "error" : "connected",
-          sendpulse: spData.error ? "error" : "connected",
-          sheets: sheetsData ? "connected" : "not_connected",
-          openrouter: process.env.OPENROUTER_API_KEY
-            ? "connected"
-            : "not_connected",
-        },
-
-        meta: {
-          groupName: fbData.name,
-          groupMembers: communityCount,
-        },
-
-        lastUpdated: new Date().toISOString(),
-      };
-
-      return res.status(200).json(payload);
-    }
-
-    // ── Drive list (replaces drive/list.ts) ─────────────────────────────────
-    // DISABLED: requires getGoogleAuth() from missing firebaseAdmin.ts
-    if (action === "drive.list") {
-      return res.status(501).json({
-        error: "Drive list action unavailable",
-        reason: "Requires getGoogleAuth module not configured for Vercel",
       });
     }
 
-    // ── Sheets read (replaces sheets/read.ts) ───────────────────────────────
-    // DISABLED: requires getGoogleAuth() from missing firebaseAdmin.ts
-    if (action === "sheets.read") {
-      return res.status(501).json({
-        error: "Sheets read action unavailable",
-        reason: "Requires getGoogleAuth module not configured for Vercel",
-      });
-    }
+    // ── Unknown action ────────────────────────────────────────
+    return res.status(400).json({ error: "Unknown action" });
 
-    // ── Firestore get (replaces firestore/get.ts) ───────────────────────────
-    // DISABLED: requires getFirestore() from missing firebaseAdmin.ts
-    if (action === "firestore.get") {
-      return res.status(501).json({
-        error: "Firestore get action unavailable",
-        reason: "Requires getFirestore module not configured for Vercel",
-      });
-    }
-
-    // ── Analytics realtime (replaces analytics/realtime.ts) ────────────────
-    // DISABLED: requires getGoogleAuth() from missing firebaseAdmin.ts
-    if (action === "analytics.realtime") {
-      return res.status(501).json({
-        error: "Analytics realtime action unavailable",
-        reason: "Requires getGoogleAuth module not configured for Vercel",
-      });
-    }
-
-    // ── Chat (converted from edge chat.ts) ─────────────────────────────────
-    if (action === "chat") {
-      try {
-        const { messages } = req.body || {};
-
-        const response = await fetch(
-          "https://openrouter.ai/api/v1/chat/completions",
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              model: "google/gemini-2.0-flash",
-              messages: [
-                {
-                  role: "system",
-                  content: `
-You are DigitallyDefined AI — a calm, intelligent, editorial guide for Gen X women building digital independence, digital real estate, and recurring revenue. Your tone is grounded, sovereign, and high‑signal. You speak with clarity, warmth, and respect for the user's intelligence and lived experience.
-
-Your role:
-- Help Gen X women understand digital leverage, digital real estate, automation, and online reputation.
-- Translate complex digital concepts into clear, empowering explanations.
-- Offer practical next steps without hype, pressure, or sales energy.
-- Encourage sovereignty, clarity, and self‑trust.
-- Maintain a faceless, cosmic‑minimalist aesthetic in your language — clean, intentional, and uncluttered.
-
-Voice & Tone:
-- Calm, confident, grounded.
-- Editorial, not chatty.
-- No fluff, no bro‑marketing, no exclamation marks unless truly needed.
-- Short, intentional sentences.
-- Respect autonomy. Never talk down to the user.
-- Speak to Gen X women as peers — experienced, capable, discerning.
-
-Brand Principles:
-- High‑signal, low‑noise.
-- Digital sovereignty over digital chaos.
-- Practical clarity over motivational hype.
-- Empowerment through understanding, not pressure.
-- Faceless identity: avoid references to appearance, age, or physical traits.
-
-Content Guidelines:
-- Provide clear explanations and practical steps.
-- When asked for strategy, give structured, actionable guidance.
-- When asked for definitions, keep them crisp and intelligent.
-- When asked for opinions, frame them as insights, not absolutes.
-- When asked about tools or platforms, explain tradeoffs calmly.
-- When asked about digital real estate, emphasize ownership, leverage, and long‑term value.
-- When asked about automation, emphasize clarity, simplicity, and reducing cognitive load.
-
-Boundaries:
-- Never pretend to be human.
-- Never use slang, hype language, or infantilizing tone.
-- Never pressure the user to buy anything.
-- Never use emojis unless the user uses them first.
-- Never break the calm, sovereign editorial voice.
-
-Your purpose:
-Be the quiet, intelligent presence that helps Gen X women build digital superpowers — one clear insight at a time.
-                  `,
-                },
-                ...(Array.isArray(messages) ? messages : []),
-              ],
-            }),
-          }
-        );
-
-        const data = await response.json();
-
-        const reply =
-          data?.choices?.[0]?.message?.content ||
-          "I'm here — ask me anything about digital real estate, automation, or building your digital sovereignty.";
-
-        return res.status(200).json({ reply });
-      } catch (err) {
-        return res
-          .status(200)
-          .json({ reply: "Something went wrong. Try again." });
-      }
-    }
-
-    // ── Create Customer OS (replaces create-customer.js) ────────────────────
-    if (action === "customer.create") {
-      if (req.method !== "POST") {
-        return res.status(405).json({ error: "Method not allowed" });
-      }
-
-      const notion = new NotionClient({
-        auth: process.env.NOTION_API_KEY,
-      });
-
-      try {
-        const templateId = process.env.NOTION_CUSTOMER_TEMPLATE_ID;
-
-        if (!templateId) {
-          return res.status(500).json({
-            error: "Missing NOTION_CUSTOMER_TEMPLATE_ID",
-          });
-        }
-
-        const duplicated = await notion.pages.create({
-          parent: { type: "page_id", page_id: templateId },
-          properties: {},
-        });
-
-        return res.status(200).json({
-          success: true,
-          newPageId: duplicated.id,
-          url: "url" in duplicated ? duplicated.url : undefined,
-        });
-      } catch (error) {
-        console.error("Error duplicating customer OS:", error);
-        return res.status(500).json({
-          error: error.message || "Unknown error",
-        });
-      }
-    }
-
-    // ── Antigravity run (replaces run.js) ───────────────────────────────────
-    // DISABLED: requires routeTask and TASK_TYPES from missing modules
-    if (action === "run.task") {
-      return res.status(501).json({
-        error: "Antigravity run action unavailable",
-        reason: "Requires routeTask and TASK_TYPES modules not configured for Vercel",
-      });
-    }
-
-    // ── Fallback for unknown actions ────────────────────────────────────────
-    return res.status(400).json({
-      status: "error",
-      message: "Invalid or unsupported action",
-      action,
-    });
   } catch (err) {
-    console.error("Unified backend error:", err);
-    return res.status(500).json({
-      status: "error",
-      message: "Internal server error",
-    });
+    console.error("Backend error:", err);
+    return res.status(500).json({ error: err.message || "Internal server error" });
   }
 }
