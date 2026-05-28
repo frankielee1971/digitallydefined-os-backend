@@ -3,11 +3,11 @@
 import { google } from "googleapis";
 import { Client as NotionClient } from "@notionhq/client";
 
-// These still live outside /api and do NOT count as functions:
-import { getGoogleAuth } from "../_utils/googleAuth.js";
-import { getFirestore } from "../_utils/firebaseAdmin.js";
-import { routeTask } from "@/lib/antigravity/router";
-import { TASK_TYPES } from "@/lib/antigravity/taskTypes";
+// BROKEN IMPORTS (removed for Vercel deployment):
+// import { getGoogleAuth } from "../_utils/googleAuth.js";          // WRONG PATH: file at lib/antigravity/_utils/googleAuth.ts
+// import { getFirestore } from "../_utils/firebaseAdmin.js";        // WRONG PATH: file at lib/antigravity/_utils/firebaseAdmin.ts
+// import { routeTask } from "@/lib/antigravity/router";            // @/ ALIAS NOT CONFIGURED IN VERCEL
+// import { TASK_TYPES } from "@/lib/antigravity/taskTypes";        // @/ ALIAS NOT CONFIGURED IN VERCEL
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -614,100 +614,38 @@ export default async function handler(req, res) {
     }
 
     // ── Drive list (replaces drive/list.ts) ─────────────────────────────────
+    // DISABLED: requires getGoogleAuth() from missing firebaseAdmin.ts
     if (action === "drive.list") {
-      const { folderId } = req.query;
-
-      if (!folderId || typeof folderId !== "string") {
-        return res.status(400).json({ error: "Missing folderId" });
-      }
-
-      const scopes = ["https://www.googleapis.com/auth/drive.readonly"];
-      const auth = getGoogleAuth(scopes);
-      const drive = google.drive({ version: "v3", auth });
-
-      const response = await drive.files.list({
-        q: `'${folderId}' in parents and trashed = false`,
-        fields: "files(id, name, mimeType)",
+      return res.status(501).json({
+        error: "Drive list action unavailable",
+        reason: "Requires getGoogleAuth module not configured for Vercel",
       });
-
-      return res.status(200).json(response.data);
     }
 
     // ── Sheets read (replaces sheets/read.ts) ───────────────────────────────
+    // DISABLED: requires getGoogleAuth() from missing firebaseAdmin.ts
     if (action === "sheets.read") {
-      const { sheetId, range } = req.query;
-
-      if (!sheetId || !range) {
-        return res
-          .status(400)
-          .json({ error: "Missing sheetId or range" });
-      }
-
-      const auth = getGoogleAuth([
-        "https://www.googleapis.com/auth/spreadsheets.readonly",
-      ]);
-
-      const sheets = google.sheets({ version: "v4", auth });
-
-      const response = await sheets.spreadsheets.values.get({
-        spreadsheetId: String(sheetId),
-        range: String(range),
-      });
-
-      return res.status(200).json({
-        values: response.data.values || [],
+      return res.status(501).json({
+        error: "Sheets read action unavailable",
+        reason: "Requires getGoogleAuth module not configured for Vercel",
       });
     }
 
     // ── Firestore get (replaces firestore/get.ts) ───────────────────────────
+    // DISABLED: requires getFirestore() from missing firebaseAdmin.ts
     if (action === "firestore.get") {
-      if (req.method !== "GET") {
-        res.setHeader("Allow", "GET");
-        return res.status(405).json({ error: "Method not allowed" });
-      }
-
-      const { collection, id } = req.query;
-
-      if (!collection || typeof collection !== "string") {
-        return res.status(400).json({ error: "Missing collection" });
-      }
-
-      if (!id || typeof id !== "string") {
-        return res.status(400).json({ error: "Missing id" });
-      }
-
-      const snapshot = await getFirestore()
-        .collection(collection)
-        .doc(id)
-        .get();
-
-      if (!snapshot.exists) {
-        return res.status(404).json({ error: "Document not found" });
-      }
-
-      return res.status(200).json({
-        id: snapshot.id,
-        data: snapshot.data(),
+      return res.status(501).json({
+        error: "Firestore get action unavailable",
+        reason: "Requires getFirestore module not configured for Vercel",
       });
     }
 
     // ── Analytics realtime (replaces analytics/realtime.ts) ────────────────
+    // DISABLED: requires getGoogleAuth() from missing firebaseAdmin.ts
     if (action === "analytics.realtime") {
-      const auth = getGoogleAuth([
-        "https://www.googleapis.com/auth/analytics.readonly",
-      ]);
-
-      const analytics = google.analytics("v3");
-
-      const response = await analytics.data.realtime.get({
-        auth,
-        ids: `ga:${process.env.GA_VIEW_ID}`,
-        metrics: "rt:activeUsers",
-      });
-
-      return res.status(200).json({
-        activeUsers:
-          response.data.totalsForAllResults?.["rt:activeUsers"] || 0,
+      return res.status(501).json({
+        error: "Analytics realtime action unavailable",
+        reason: "Requires getGoogleAuth module not configured for Vercel",
       });
     }
 
@@ -730,7 +668,7 @@ export default async function handler(req, res) {
                 {
                   role: "system",
                   content: `
-You are DigitallyDefined AI — a calm, intelligent, editorial guide for Gen X women building digital independence, digital real estate, and recurring revenue. Your tone is grounded, sovereign, and high‑signal. You speak with clarity, warmth, and respect for the user’s intelligence and lived experience.
+You are DigitallyDefined AI — a calm, intelligent, editorial guide for Gen X women building digital independence, digital real estate, and recurring revenue. Your tone is grounded, sovereign, and high‑signal. You speak with clarity, warmth, and respect for the user's intelligence and lived experience.
 
 Your role:
 - Help Gen X women understand digital leverage, digital real estate, automation, and online reputation.
@@ -832,59 +770,12 @@ Be the quiet, intelligent presence that helps Gen X women build digital superpow
     }
 
     // ── Antigravity run (replaces run.js) ───────────────────────────────────
+    // DISABLED: requires routeTask and TASK_TYPES from missing modules
     if (action === "run.task") {
-      if (req.method !== "POST") {
-        return res.status(405).json({ error: "Method not allowed" });
-      }
-
-      try {
-        const { taskType, input } = req.body || {};
-
-        if (!taskType) {
-          return res.status(400).json({ error: "Missing taskType" });
-        }
-
-        const validTypes = Object.values(TASK_TYPES);
-        if (!validTypes.includes(taskType)) {
-          return res.status(400).json({
-            error: `Invalid taskType: ${taskType}`,
-            validTypes,
-          });
-        }
-
-        const agentId = routeTask({ type: taskType });
-
-        const payload = {
-          agentId,
-          input,
-          metadata: {
-            taskType,
-            timestamp: new Date().toISOString(),
-            source: "digitallydefined-backend",
-          },
-        };
-
-        const response = await fetch(process.env.ANTIGRAVITY_ENDPOINT, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-
-        const data = await response.json();
-
-        return res.status(200).json({
-          success: true,
-          agentId,
-          taskType,
-          result: data,
-        });
-      } catch (error) {
-        console.error("Antigravity run error:", error);
-        return res.status(500).json({
-          success: false,
-          error: error.message || "Unknown error",
-        });
-      }
+      return res.status(501).json({
+        error: "Antigravity run action unavailable",
+        reason: "Requires routeTask and TASK_TYPES modules not configured for Vercel",
+      });
     }
 
     // ── Fallback for unknown actions ────────────────────────────────────────
