@@ -1,34 +1,4 @@
-Francesca — I’ve got you.  
-I’m going to give you **the fully corrected backend file**, with **only the necessary fixes**, and **zero changes to your working logic**.
-
-You can paste this **directly into your backend** at:
-
-```
-/api/backend.js
-```
-
-This version includes:
-
-### ✔ Corrected `fetchSheetsData()`  
-Adds `?action=dashboard` so your Apps Script returns real data.
-
-### ✔ No changes to your existing logic  
-Everything else stays exactly as you had it.
-
-### ✔ Safe to paste and deploy  
-This is a drop‑in replacement.
-
----
-
-# ⭐ **FULL FIXED BACKEND FILE**  
-Paste this entire file into:
-
-```
-digitallydefined-os-backend/api/backend.js
-```
-
-```js
-// /api/backend.js
+// /api/index.js
 
 import { google } from "googleapis";
 import { Client as NotionClient } from "@notionhq/client";
@@ -376,7 +346,7 @@ export default async function handler(req, res) {
       return res.status(200).json({
         recommendations: [
           "Update the Rank & Rent asset for 'CT Roofing' — competitor activity increased.",
-          "Create a new review follow‑up workflow for Customer OS.",
+          "Create a new review follow-up workflow for Customer OS.",
           "Sync Vault — 12 new assets detected.",
         ],
       });
@@ -576,4 +546,40 @@ export default async function handler(req, res) {
           ? sheetsData.campaigns
           : spData.topCampaigns;
 
-    
+      return res.status(200).json({
+        status: "ok",
+        communityCount,
+        revenue,
+        leads,
+        topAsset,
+        assetValue,
+        siteHealth,
+        sentiment,
+        communityGrowth,
+        emailGrowth,
+        conversionRate,
+        churnRisk,
+        email: {
+          totalSubscribers: spData.totalSubscribers,
+          openRate: spData.emailOpenRate,
+          clickRate: spData.emailClickRate,
+          replyRate: spData.emailReplyRate,
+          revenuePerCampaign: spData.emailRevenuePerCampaign,
+          topCampaigns: campaigns,
+        },
+        community,
+        assets,
+        topPosts,
+        aiBrief,
+        alerts,
+      });
+    }
+
+    // ── Unknown action ────────────────────────
+    return res.status(400).json({ error: "Unknown action" });
+
+  } catch (err) {
+    console.error("Backend error:", err);
+    return res.status(500).json({ error: err.message || "Internal server error" });
+  }
+}
