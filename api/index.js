@@ -303,13 +303,15 @@ function checkDashboardApiKey(req) {
 // ─── Main Unified Handler ──────────────────────────────────────────────────
 
 export default async function handler(req, res) {
-  // CORS for dashboard
+  // ⭐ FIXED CORS BLOCK ⭐
   res.setHeader(
     "Access-Control-Allow-Origin",
     "https://dashboard.digitallydefined.online"
   );
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  res.setHeader("Vary", "Origin");
 
   if (req.method === "OPTIONS") {
     return res.status(200).end();
@@ -530,15 +532,4 @@ export default async function handler(req, res) {
         ? sheetsData.assets
         : [];
       const email = sheetsData?.email || {};
-      const topPosts = Array.isArray(sheetsData?.topPosts)
-        ? sheetsData.topPosts
-        : [];
-      const campaigns =
-        Array.isArray(sheetsData?.campaigns) &&
-        sheetsData.campaigns.length > 0
-          ? sheetsData.campaigns
-          : spData.topCampaigns;
-
-      return res.status(200).json({
-        status: "ok",
-        community
+      const topPosts = Array.isArray(s
