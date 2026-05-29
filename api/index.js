@@ -532,4 +532,47 @@ export default async function handler(req, res) {
         ? sheetsData.assets
         : [];
       const email = sheetsData?.email || {};
-      const topPosts = Array.isArray(s
+            const topPosts = Array.isArray(sheetsData?.topPosts)
+        ? sheetsData.topPosts
+        : [];
+
+      const campaigns =
+        Array.isArray(sheetsData?.campaigns) &&
+        sheetsData.campaigns.length > 0
+          ? sheetsData.campaigns
+          : spData.topCampaigns;
+
+      // ⭐ COMPLETE RETURN BLOCK ⭐
+      return res.status(200).json({
+        status: "ok",
+        community,
+        assets,
+        email,
+        topPosts,
+        campaigns,
+        metrics: {
+          communityCount,
+          communityGrowth,
+          emailSubscribers: spData.totalSubscribers,
+          emailGrowth,
+          emailOpenRate: spData.emailOpenRate,
+          emailClickRate: spData.emailClickRate,
+          conversionRate,
+          churnRisk,
+          revenue,
+          leads,
+          topAsset,
+          assetValue,
+          siteHealth,
+          sentiment,
+        },
+        aiBrief,
+        alerts,
+      });
+    }
+
+  } catch (err) {
+    console.error("Dashboard error:", err);
+    return res.status(500).json({ error: "Dashboard fetch failed" });
+  }
+}
