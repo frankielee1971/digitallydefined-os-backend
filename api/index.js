@@ -197,22 +197,29 @@ async function fetchFacebookGroup() {
   }
 
   try {
+    // NOTE: member_count is restricted by Facebook and requires app review.
+    // We fetch name and privacy only; member_count comes from Google Sheets.
     const url = new URL(`https://graph.facebook.com/v18.0/${groupId}`);
-    url.searchParams.set('fields', 'name,member_count,privacy');
-    url.searchParams.set('access_token', token);
+    url.searchParams.set('fields', 'name,privacy');
+    url.searchParams.set('access_token', token.trim());
 
     const res = await fetch(url.toString());
     const data = await parseJsonSafe(res, {});
 
-    if (!res.ok) throw new Error(data?.error?.message || 'Facebook API error');
+    if (!res.ok) {
+      const fbError = data?.error?.message || 'Facebook API error';
+      console.error('[Facebook] API error:', fbError, '| code:', data?.error?.code, '| type:', data?.error?.type);
+      throw new Error(fbError);
+    }
 
     return {
       name: data?.name || null,
-      member_count: safeNumber(data?.member_count, 0),
+      member_count: 0, // populated from Sheets
       error: null,
       debug: null,
     };
   } catch (e) {
+    console.error('[Facebook] fetchFacebookGroup failed:', e.message);
     return {
       name: null,
       member_count: 0,
@@ -228,23 +235,32 @@ async function fetchSendPulseToken() {
   if (!userId || !secret) return { token: null, error: 'SendPulse credentials not set', debug: null };
 
   try {
+    const body = JSON.stringify({
+      grant_type: 'client_credentials',
+      client_id: userId.trim(),
+      client_secret: secret.trim(),
+    });
+
+    console.log('[SendPulse] Requesting token, client_id length:', userId.trim().length);
+
     const res = await fetch('https://api.sendpulse.com/oauth/access_token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        grant_type: 'client_credentials',
-        client_id: userId,
-        client_secret: secret,
-      }),
+      body,
     });
 
     const data = await parseJsonSafe(res, {});
+
     if (!res.ok) {
-      throw new Error(data?.error_description || data?.error || 'SendPulse token request failed');
+      const spError = data?.error_description || data?.error || 'SendPulse token request failed';
+      console.error('[SendPulse] Token error:', spError, '| status:', res.status, '| raw:', JSON.stringify(data));
+      throw new Error(spError);
     }
 
+    console.log('[SendPulse] Token obtained successfully');
     return { token: data?.access_token || null, error: null, debug: null };
   } catch (e) {
+    console.error('[SendPulse] fetchSendPulseToken failed:', e.message);
     return {
       token: null,
       error: maskErrorDetails(e, 'SendPulse auth'),
@@ -313,7 +329,7 @@ async function fetchSendPulseStats(token) {
       ? withStats.reduce((sum, c) => {
           const sent = safeNumber(c?.statistics?.sent, 0);
           const clicked = safeNumber(c?.statistics?.clicked, 0);
-          return sum + (sent > 0 ? (clicked / sent) * 100 : 0);
+          return sum + (sent > 0 ? (clicked / sent) * 100 : 0)
         }, 0) / withStats.length
       : 0;
 
@@ -371,7 +387,7 @@ async function fetchSheetsData() {
 
 async function fetchAIBrief(context) {
   const apiKey = process.env.GROQ_API_KEY;
-  const model = process.env.MODEL || 'llama-3.3-70b-versatile';
+  const model = (process.env.MODEL || 'llama-3.3-70b-versatile').trim();
 
   if (!apiKey) {
     return {
@@ -383,27 +399,13 @@ async function fetchAIBrief(context) {
     };
   }
 
-  const prompt = `You are analyzing a digital business dashboard for DigitallyDefined — a faceless digital asset business targeting Gen X women.
-Current stats:
-- Community members: ${context.communityCount}
-- Community growth: ${context.communityGrowth}
-- Email subscribers: ${context.emailSubscribers}
-- Email open rate: ${context.emailOpenRate}
-- Email click rate: ${context.emailClickRate}
-- Top performing asset: ${context.topAsset}
-- Revenue this period: ${context.revenue}
-Respond ONLY with a JSON object in this exact format (no markdown, no extra text):
-{
-  "working": ["one sentence max per item, 2-3 items"],
-  "slipping": ["one sentence max per item, 1-2 items"],
-  "nextActions": ["one sentence max per item, 1-2 items"]
-}`;
+  const prompt = `You are analyzing a digital business dashboard for DigitallyDefined — a faceless digital asset business targeting Gen X women.\nCurrent stats:\n- Community members: ${context.communityCount}\n- Community growth: ${context.communityGrowth}\n- Email subscribers: ${context.emailSubscribers}\n- Email open rate: ${context.emailOpenRate}\n- Email click rate: ${context.emailClickRate}\n- Top performing asset: ${context.topAsset}\n- Revenue this period: ${context.revenue}\nRespond ONLY with a JSON object in this exact format (no markdown, no extra text):\n{\n  "working": ["one sentence max per item, 2-3 items"],\n  "slipping": ["one sentence max per item, 1-2 items"],\n  "nextActions": ["one sentence max per item, 1-2 items"]\n}`;
 
   try {
     const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${apiKey.trim()}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -517,7 +519,7 @@ function buildEnvStatus() {
     sendPulseSecretSet: !!process.env.SENDPULSE_API_SECRET,
     sheetsWebhookUrlSet: !!process.env.SHEETS_WEBHOOK_URL,
     groqApiKeySet: !!process.env.GROQ_API_KEY,
-    model: process.env.MODEL || 'llama-3.3-70b-versatile',
+    model: (process.env.MODEL || 'llama-3.3-70b-versatile').trim(),
     vercelEnv: process.env.VERCEL_ENV || 'unknown',
     nodeEnv: process.env.NODE_ENV || 'unknown',
   };
