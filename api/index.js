@@ -3,12 +3,6 @@
 import { google } from "googleapis";
 import { Client as NotionClient } from "@notionhq/client";
 
-// BROKEN IMPORTS (removed for Vercel deployment):
-// import { getGoogleAuth } from "../_utils/googleAuth.js";
-// import { getFirestore } from "../_utils/firebaseAdmin.js";
-// import { routeTask } from "@/lib/antigravity/router";
-// import { TASK_TYPES } from "@/lib/antigravity/taskTypes";
-
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 const formatPct = (n) => `${n.toFixed(1)}%`;
@@ -158,7 +152,7 @@ async function fetchSendPulseStats(token) {
   }
 }
 
-// ─── Google Sheets (FIXED) ──────────────────────────────────────────────────
+// ─── Google Sheets ─────────────────────────────────────────────────────────
 
 async function fetchSheetsData() {
   const sheetsUrl = process.env.SHEETS_WEBHOOK_URL;
@@ -180,14 +174,15 @@ async function fetchSheetsData() {
   }
 }
 
-// ─── AI Brief ───────────────────────────────────────────────────────────────
+// ─── AI Brief (GROQ VERSION) ───────────────────────────────────────────────
 
 async function fetchAIBrief(context) {
-  const apiKey = process.env.OPENROUTER_API_KEY;
+  const apiKey = process.env.GROQ_API_KEY;
+  const model = process.env.MODEL || "groq/llama-3.1-70b-versatile";
 
   if (!apiKey) {
     return {
-      working: ["AI brief unavailable — OPENROUTER_API_KEY not set."],
+      working: ["AI brief unavailable — GROQ_API_KEY not set."],
       slipping: [],
       nextActions: [],
     };
@@ -209,19 +204,17 @@ Respond ONLY with a JSON object in this exact format (no markdown, no extra text
   "working": ["one sentence max per item, 2-3 items"],
   "slipping": ["one sentence max per item, 1-2 items"],
   "nextActions": ["one sentence max per item, 1-2 items"]
-}
-
-Be specific to the numbers. Be direct. No hype. No filler.`;
+}`;
 
   try {
-    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.0-flash",
+        model,
         messages: [{ role: "user", content: prompt }],
       }),
     });
@@ -231,11 +224,11 @@ Be specific to the numbers. Be direct. No hype. No filler.`;
     const cleaned = raw.replace(/```json|```/g, "").trim();
 
     return JSON.parse(cleaned);
-  } catch {
+  } catch (err) {
     return {
       working: ["Community is active and syncing."],
-      slipping: ["Could not generate AI brief — check OpenRouter key."],
-      nextActions: ["Verify OPENROUTER_API_KEY is set in backend env vars."],
+      slipping: ["Could not generate AI brief — check GROQ_API_KEY."],
+      nextActions: ["Verify GROQ_API_KEY is set in backend env vars."],
     };
   }
 }
@@ -276,12 +269,12 @@ function buildAlerts(checks) {
     });
   }
 
-  if (!checks.openRouterSet) {
+  if (!checks.groqSet) {
     alerts.push({
       type: "info",
       source: "AI Brief",
       message:
-        "OPENROUTER_API_KEY not set — AI Command Brief is using fallback text.",
+        "GROQ_API_KEY not set — AI Command Brief is using fallback text.",
     });
   }
 
@@ -352,7 +345,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // ── Brain Brief ────────────────────────────────────────────────────────
+    // ── Brain Brief (static example) ───────────────────────────────────────
     if (action === "brain.brief") {
       const payload = {
         generatedAt: "2026-05-25T17:25:00-04:00",
@@ -524,7 +517,7 @@ export default async function handler(req, res) {
         facebookError: fbData.error,
         emailError: spData.error,
         sheetsConnected: !!sheetsData,
-        openRouterSet: !!process.env.OPENROUTER_API_KEY,
+        groqSet: !!process.env.GROQ_API_KEY,
         facebookEnvSet: !!(
           process.env.FACEBOOK_GROUP_ID && process.env.FACEBOOK_ACCESS_TOKEN
         ),
@@ -548,38 +541,4 @@ export default async function handler(req, res) {
 
       return res.status(200).json({
         status: "ok",
-        communityCount,
-        revenue,
-        leads,
-        topAsset,
-        assetValue,
-        siteHealth,
-        sentiment,
-        communityGrowth,
-        emailGrowth,
-        conversionRate,
-        churnRisk,
-        email: {
-          totalSubscribers: spData.totalSubscribers,
-          openRate: spData.emailOpenRate,
-          clickRate: spData.emailClickRate,
-          replyRate: spData.emailReplyRate,
-          revenuePerCampaign: spData.emailRevenuePerCampaign,
-          topCampaigns: campaigns,
-        },
-        community,
-        assets,
-        topPosts,
-        aiBrief,
-        alerts,
-      });
-    }
-
-    // ── Unknown action ────────────────────────
-    return res.status(400).json({ error: "Unknown action" });
-
-  } catch (err) {
-    console.error("Backend error:", err);
-    return res.status(500).json({ error: err.message || "Internal server error" });
-  }
-}
+        community
