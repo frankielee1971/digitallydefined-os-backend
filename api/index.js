@@ -198,10 +198,10 @@ async function fetchFacebookGroup() {
 
   try {
     // NOTE: member_count is restricted by Facebook and requires app review.
-    // We fetch name and privacy only; member_count comes from Google Sheets.
+    // We fetch name only; member_count comes from Google Sheets.
     // Using v21.0 — current stable Graph API version as of 2025.
     const url = new URL(`https://graph.facebook.com/v21.0/${groupId}`);
-    url.searchParams.set('fields', 'name,privacy');
+    url.searchParams.set('fields', 'name');
     url.searchParams.set('access_token', token.trim());
 
     const res = await fetch(url.toString());
@@ -233,16 +233,24 @@ async function fetchFacebookGroup() {
 async function fetchSendPulseToken() {
   const userId = process.env.SENDPULSE_API_USER_ID;
   const secret = process.env.SENDPULSE_API_SECRET;
-  if (!userId || !secret) return { token: null, error: 'SendPulse credentials not set', debug: null };
+
+  if (!userId || !secret) {
+    return { token: null, error: 'SendPulse credentials not set', debug: null };
+  }
 
   try {
+    const cleanUserId = userId.trim();
+    const cleanSecret = secret.trim();
+
     const body = JSON.stringify({
       grant_type: 'client_credentials',
-      client_id: userId.trim(),
-      client_secret: secret.trim(),
+      client_id: cleanUserId,
+      client_secret: cleanSecret,
     });
 
-    console.log('[SendPulse] Requesting token, client_id length:', userId.trim().length);
+    console.log('[SendPulse] Requesting token');
+    console.log('[SendPulse] client_id length:', cleanUserId.length);
+    console.log('[SendPulse] secret length:', cleanSecret.length);
 
     const res = await fetch('https://api.sendpulse.com/oauth/access_token', {
       method: 'POST',
@@ -250,16 +258,29 @@ async function fetchSendPulseToken() {
       body,
     });
 
-    const data = await parseJsonSafe(res, {});
+    const data = await parseJsonSafe(res, null);
+
+    console.log('[SendPulse] token response status:', res.status);
+    console.log('[SendPulse] token response body:', JSON.stringify(data));
 
     if (!res.ok) {
-      const spError = data?.error_description || data?.error || 'SendPulse token request failed';
+      const spError =
+        data?.error_description ||
+        data?.error ||
+        data?.message ||
+        'SendPulse token request failed';
+
       console.error('[SendPulse] Token error:', spError, '| status:', res.status, '| raw:', JSON.stringify(data));
       throw new Error(spError);
     }
 
     console.log('[SendPulse] Token obtained successfully');
-    return { token: data?.access_token || null, error: null, debug: null };
+
+    return {
+      token: data?.access_token || null,
+      error: null,
+      debug: null,
+    };
   } catch (e) {
     console.error('[SendPulse] fetchSendPulseToken failed:', e.message);
     return {
@@ -400,7 +421,21 @@ async function fetchAIBrief(context) {
     };
   }
 
-  const prompt = `You are analyzing a digital business dashboard for DigitallyDefined — a faceless digital asset business targeting Gen X women.\nCurrent stats:\n- Community members: ${context.communityCount}\n- Community growth: ${context.communityGrowth}\n- Email subscribers: ${context.emailSubscribers}\n- Email open rate: ${context.emailOpenRate}\n- Email click rate: ${context.emailClickRate}\n- Top performing asset: ${context.topAsset}\n- Revenue this period: ${context.revenue}\nRespond ONLY with a JSON object in this exact format (no markdown, no extra text):\n{\n  "working": ["one sentence max per item, 2-3 items"],\n  "slipping": ["one sentence max per item, 1-2 items"],\n  "nextActions": ["one sentence max per item, 1-2 items"]\n}`;
+  const prompt = `You are analyzing a digital business dashboard for DigitallyDefined — a faceless digital asset business targeting Gen X women.
+Current stats:
+- Community members: ${context.communityCount}
+- Community growth: ${context.communityGrowth}
+- Email subscribers: ${context.emailSubscribers}
+- Email open rate: ${context.emailOpenRate}
+- Email click rate: ${context.emailClickRate}
+- Top performing asset: ${context.topAsset}
+- Revenue this period: ${context.revenue}
+Respond ONLY with a JSON object in this exact format (no markdown, no extra text):
+{
+  "working": ["one sentence max per item, 2-3 items"],
+  "slipping": ["one sentence max per item, 1-2 items"],
+  "nextActions": ["one sentence max per item, 1-2 items"]
+}`;
 
   try {
     const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -518,9 +553,9 @@ function buildEnvStatus() {
     facebookAccessTokenSet: !!process.env.FACEBOOK_ACCESS_TOKEN,
     sendPulseUserIdSet: !!process.env.SENDPULSE_API_USER_ID,
     sendPulseSecretSet: !!process.env.SENDPULSE_API_SECRET,
+    model: (process.env.MODEL || 'llama-3.3-70b-versatile').trim(),
     sheetsWebhookUrlSet: !!process.env.SHEETS_WEBHOOK_URL,
     groqApiKeySet: !!process.env.GROQ_API_KEY,
-    model: (process.env.MODEL || 'llama-3.3-70b-versatile').trim(),
     vercelEnv: process.env.VERCEL_ENV || 'unknown',
     nodeEnv: process.env.NODE_ENV || 'unknown',
   };
@@ -810,7 +845,9 @@ export default async function handler(req, res) {
     console.error('Dashboard error:', err);
     return res.status(500).json({
       error: 'Dashboard fetch failed',
-      details: process.env.NODE_ENV !== 'production' ? err?.message || 'Unknown error' : 'An internal error occurred.',
+      details: process.env.NODE_ENV !== 'production'
+        ? err?.message || 'Unknown error'
+        : 'An internal error occurred.',
     });
   }
 }
