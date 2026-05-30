@@ -139,7 +139,7 @@ function applyRateLimit(req, res) {
 function checkDashboardApiKey(req) {
   const apiKey = req.headers['x-api-key'];
   const expectedKey = process.env.DASHBOARD_API_KEY;
-  if (!expectedKey) return true;
+  if (!expectedKey) return false;
   return apiKey === expectedKey;
 }
 
@@ -215,7 +215,7 @@ async function fetchFacebookGroup() {
 
     return {
       name: data?.name || null,
-      member_count: 0, // populated from Sheets
+      member_count: 0,
       error: null,
       debug: null,
     };
@@ -330,7 +330,7 @@ async function fetchSendPulseStats(token) {
       ? withStats.reduce((sum, c) => {
           const sent = safeNumber(c?.statistics?.sent, 0);
           const clicked = safeNumber(c?.statistics?.clicked, 0);
-          return sum + (sent > 0 ? (clicked / sent) * 100 : 0)
+          return sum + (sent > 0 ? (clicked / sent) * 100 : 0);
         }, 0) / withStats.length
       : 0;
 
