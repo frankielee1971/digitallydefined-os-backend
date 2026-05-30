@@ -199,7 +199,8 @@ async function fetchFacebookGroup() {
   try {
     // NOTE: member_count is restricted by Facebook and requires app review.
     // We fetch name and privacy only; member_count comes from Google Sheets.
-    const url = new URL(`https://graph.facebook.com/v18.0/${groupId}`);
+    // Using v21.0 — current stable Graph API version as of 2025.
+    const url = new URL(`https://graph.facebook.com/v21.0/${groupId}`);
     url.searchParams.set('fields', 'name,privacy');
     url.searchParams.set('access_token', token.trim());
 
