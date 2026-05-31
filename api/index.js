@@ -230,100 +230,65 @@ async function fetchFacebookGroup() {
   }
 }
 
-async function fetchSendPulseToken() {
-  const userId = process.env.SENDPULSE_API_USER_ID;
-  const secret = process.env.SENDPULSE_API_SECRET;
+async function fetchBrevoStats() {
+  const apiKey = process.env.BREVO_API_KEY;
+  const listId = process.env.BREVO_LIST_ID;
 
-  if (!userId || !secret) {
-    return { token: null, error: 'SendPulse credentials not set', debug: null };
-  }
-
-  try {
-    const cleanUserId = userId.trim();
-    const cleanSecret = secret.trim();
-
-    const body = JSON.stringify({
-      grant_type: 'client_credentials',
-      client_id: cleanUserId,
-      client_secret: cleanSecret,
-    });
-
-    console.log('[SendPulse] Requesting token');
-    console.log('[SendPulse] client_id length:', cleanUserId.length);
-    console.log('[SendPulse] secret length:', cleanSecret.length);
-
-    const res = await fetch('https://api.sendpulse.com/oauth/access_token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body,
-    });
-
-    const data = await parseJsonSafe(res, null);
-
-    console.log('[SendPulse] token response status:', res.status);
-    console.log('[SendPulse] token response body:', JSON.stringify(data));
-
-    if (!res.ok) {
-      const spError =
-        data?.error_description ||
-        data?.error ||
-        data?.message ||
-        'SendPulse token request failed';
-
-      console.error('[SendPulse] Token error:', spError, '| status:', res.status, '| raw:', JSON.stringify(data));
-      throw new Error(spError);
-    }
-
-    console.log('[SendPulse] Token obtained successfully');
-
+  if (!apiKey) {
     return {
-      token: data?.access_token || null,
-      error: null,
+      totalSubscribers: 0,
+      emailOpenRate: '0.0%',
+      emailClickRate: '0.0%',
+      emailReplyRate: 'N/A',
+      emailRevenuePerCampaign: '$0',
+      topCampaigns: [],
+      error: 'Brevo API key not set',
       debug: null,
     };
-  } catch (e) {
-    console.error('[SendPulse] fetchSendPulseToken failed:', e.message);
-    return {
-      token: null,
-      error: maskErrorDetails(e, 'SendPulse auth'),
-      debug: process.env.NODE_ENV !== 'production' ? e.message || 'SendPulse token failed' : null,
-    };
   }
-}
 
-function unwrapArrayPayload(payload) {
-  if (Array.isArray(payload)) return payload;
-  if (Array.isArray(payload?.data)) return payload.data;
-  if (Array.isArray(payload?.result)) return payload.result;
-  return [];
-}
-
-async function fetchSendPulseStats(token) {
   try {
-    const headers = { Authorization: `Bearer ${token}` };
+    const headers = {
+      'Content-Type': 'application/json',
+      'api-key': apiKey.trim(),
+    };
 
-    const [listsRes, campaignsRes] = await Promise.all([
-      fetch('https://api.sendpulse.com/addressbooks?limit=10&offset=0', { headers }),
-      fetch('https://api.sendpulse.com/campaigns?limit=5&offset=0', { headers }),
-    ]);
+    // Fetch contacts count from list
+    const listUrl = listId
+      ? `https://api.brevo.com/v3/contacts/lists/${listId}/contacts?limit=1&offset=0`
+      : 'https://api.brevo.com/v3/contacts?limit=1&offset=0';
 
-    const listsJson = listsRes.ok ? await parseJsonSafe(listsRes, []) : [];
-    const campaignsJson = campaignsRes.ok ? await parseJsonSafe(campaignsRes, []) : [];
+    const contactsRes = await fetch(listUrl, { headers });
+    const contactsData = await parseJsonSafe(contactsRes, {});
 
-    if (!listsRes.ok) {
-      throw new Error(listsJson?.error || listsJson?.message || 'SendPulse addressbooks failed');
+    console.log('[Brevo] Contacts response status:', contactsRes.status);
+    console.log('[Brevo] Contacts response body:', JSON.stringify(contactsData));
+
+    if (!contactsRes.ok) {
+      const errorMsg = contactsData?.message || 'Brevo contacts request failed';
+      console.error('[Brevo] Contacts error:', errorMsg, '| status:', contactsRes.status);
+      throw new Error(errorMsg);
     }
+
+    const totalSubscribers = contactsData?.count || contactsData?.contacts?.length || 0;
+
+    // Fetch campaign stats
+    const campaignsRes = await fetch('https://api.brevo.com/v3/emailCampaigns?limit=5&offset=0', {
+      headers,
+    });
+
+    const campaignsData = await parseJsonSafe(campaignsRes, {});
+
+    console.log('[Brevo] Campaigns response status:', campaignsRes.status);
+    console.log('[Brevo] Campaigns response body:', JSON.stringify(campaignsData));
+
     if (!campaignsRes.ok) {
-      throw new Error(campaignsJson?.error || campaignsJson?.message || 'SendPulse campaigns failed');
+      const errorMsg = campaignsData?.message || 'Brevo campaigns request failed';
+      console.error('[Brevo] Campaigns error:', errorMsg, '| status:', campaignsRes.status);
+      throw new Error(errorMsg);
     }
 
-    const lists = unwrapArrayPayload(listsJson);
-    const campaigns = unwrapArrayPayload(campaignsJson);
-
-    const totalSubscribers = lists.reduce(
-      (sum, list) => sum + safeNumber(list?.all_email_qty, 0),
-      0
-    );
+    const campaigns = Array.isArray(campaignsData?.campaigns) ? campaignsData.campaigns : [];
 
     const withStats = campaigns.filter((c) => safeNumber(c?.statistics?.sent, 0) > 0);
 
@@ -355,6 +320,8 @@ async function fetchSendPulseStats(token) {
         }, 0) / withStats.length
       : 0;
 
+    console.log('[Brevo] Stats obtained successfully');
+
     return {
       totalSubscribers,
       emailOpenRate: formatPct(avgOpenRate),
@@ -366,6 +333,7 @@ async function fetchSendPulseStats(token) {
       debug: null,
     };
   } catch (e) {
+    console.error('[Brevo] fetchBrevoStats failed:', e.message);
     return {
       totalSubscribers: 0,
       emailOpenRate: '0.0%',
@@ -373,8 +341,8 @@ async function fetchSendPulseStats(token) {
       emailReplyRate: 'N/A',
       emailRevenuePerCampaign: '$0',
       topCampaigns: [],
-      error: maskErrorDetails(e, 'SendPulse API'),
-      debug: process.env.NODE_ENV !== 'production' ? e.message || 'SendPulse fetch failed' : null,
+      error: maskErrorDetails(e, 'Brevo API'),
+      debug: process.env.NODE_ENV !== 'production' ? e.message || 'Brevo fetch failed' : null,
     };
   }
 }
@@ -508,7 +476,7 @@ function buildAlerts(checks) {
   if (checks.emailError) {
     alerts.push({
       type: 'warning',
-      source: 'SendPulse',
+      source: 'Brevo',
       message: checks.emailError,
     });
   }
@@ -551,8 +519,8 @@ function buildEnvStatus() {
     dashboardApiKeySet: !!process.env.DASHBOARD_API_KEY,
     facebookGroupIdSet: !!process.env.FACEBOOK_GROUP_ID,
     facebookAccessTokenSet: !!process.env.FACEBOOK_ACCESS_TOKEN,
-    sendPulseUserIdSet: !!process.env.SENDPULSE_API_USER_ID,
-    sendPulseSecretSet: !!process.env.SENDPULSE_API_SECRET,
+    brevoApiKeySet: !!process.env.BREVO_API_KEY,
+    brevoListIdSet: !!process.env.BREVO_LIST_ID,
     model: (process.env.MODEL || 'llama-3.3-70b-versatile').trim(),
     sheetsWebhookUrlSet: !!process.env.SHEETS_WEBHOOK_URL,
     groqApiKeySet: !!process.env.GROQ_API_KEY,
@@ -727,24 +695,13 @@ export default async function handler(req, res) {
         return res.status(401).json({ error: 'Unauthorized' });
       }
 
-      const [fbData, spTokenResult, sheetsResult] = await Promise.all([
+      const [fbData, brevoData, sheetsResult] = await Promise.all([
         fetchFacebookGroup(),
-        fetchSendPulseToken(),
+        fetchBrevoStats(),
         fetchSheetsData(),
       ]);
 
-      const spData = spTokenResult.token
-        ? await fetchSendPulseStats(spTokenResult.token)
-        : {
-            totalSubscribers: 0,
-            emailOpenRate: '0.0%',
-            emailClickRate: '0.0%',
-            emailReplyRate: 'N/A',
-            emailRevenuePerCampaign: '$0',
-            topCampaigns: [],
-            error: spTokenResult.error,
-            debug: spTokenResult.debug,
-          };
+      const spData = brevoData;
 
       const sheetsData = sheetsResult.data;
 
@@ -776,7 +733,6 @@ export default async function handler(req, res) {
         emailSubscribers: spData.totalSubscribers,
         emailOpenRate: spData.emailOpenRate,
         emailClickRate: spData.emailClickRate,
-        topAsset,
         revenue,
         communityGrowth,
       });
@@ -801,7 +757,7 @@ export default async function handler(req, res) {
       const debug = process.env.NODE_ENV !== 'production'
         ? {
             facebook: fbData?.debug || null,
-            sendpulse: spData?.debug || spTokenResult?.debug || null,
+            brevo: spData?.debug || null,
             sheets: sheetsResult?.debug || null,
             groq: aiBrief?.debug || null,
           }
