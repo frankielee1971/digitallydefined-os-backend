@@ -18,7 +18,6 @@ const ALLOWED_ACTIONS = new Set([
   'automation.run',
   'automation.events',
   'dashboard',
-  'sheets',
   'test-env',
 ]);
 
@@ -31,7 +30,6 @@ const GET_ONLY_ACTIONS = new Set([
   'automation.logs',
   'automation.events',
   'dashboard',
-  'sheets',
   'test-env',
 ]);
 
@@ -232,65 +230,100 @@ async function fetchFacebookGroup() {
   }
 }
 
-async function fetchBrevoStats() {
-  const apiKey = process.env.BREVO_API_KEY;
-  const listId = process.env.BREVO_LIST_ID;
+async function fetchSendPulseToken() {
+  const userId = process.env.SENDPULSE_API_USER_ID;
+  const secret = process.env.SENDPULSE_API_SECRET;
 
-  if (!apiKey) {
-    return {
-      totalSubscribers: 0,
-      emailOpenRate: '0.0%',
-      emailClickRate: '0.0%',
-      emailReplyRate: 'N/A',
-      emailRevenuePerCampaign: '$0',
-      topCampaigns: [],
-      error: 'Brevo API key not set',
-      debug: null,
-    };
+  if (!userId || !secret) {
+    return { token: null, error: 'SendPulse credentials not set', debug: null };
   }
 
   try {
-    const headers = {
-      'Content-Type': 'application/json',
-      'api-key': apiKey.trim(),
-    };
+    const cleanUserId = userId.trim();
+    const cleanSecret = secret.trim();
 
-    // Fetch contacts count from list
-    const listUrl = listId
-      ? `https://api.brevo.com/v3/contacts/lists/${listId}/contacts?limit=1&offset=0`
-      : 'https://api.brevo.com/v3/contacts?limit=1&offset=0';
-
-    const contactsRes = await fetch(listUrl, { headers });
-    const contactsData = await parseJsonSafe(contactsRes, {});
-
-    console.log('[Brevo] Contacts response status:', contactsRes.status);
-    console.log('[Brevo] Contacts response body:', JSON.stringify(contactsData));
-
-    if (!contactsRes.ok) {
-      const errorMsg = contactsData?.message || 'Brevo contacts request failed';
-      console.error('[Brevo] Contacts error:', errorMsg, '| status:', contactsRes.status);
-      throw new Error(errorMsg);
-    }
-
-    const totalSubscribers = contactsData?.count || contactsData?.contacts?.length || 0;
-
-    // Fetch campaign stats
-    const campaignsRes = await fetch('https://api.brevo.com/v3/emailCampaigns?limit=5&offset=0', {
-      headers,
+    const body = JSON.stringify({
+      grant_type: 'client_credentials',
+      client_id: cleanUserId,
+      client_secret: cleanSecret,
     });
 
-    const campaignsData = await parseJsonSafe(campaignsRes, {});
+    console.log('[SendPulse] Requesting token');
+    console.log('[SendPulse] client_id length:', cleanUserId.length);
+    console.log('[SendPulse] secret length:', cleanSecret.length);
 
-    console.log('[Brevo] Campaigns response status:', campaignsRes.status);
-    console.log('[Brevo] Campaigns response body:', JSON.stringify(campaignsData));
+    const res = await fetch('https://api.sendpulse.com/oauth/access_token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    });
 
-    if (!campaignsRes.ok) {
-      const errorMsg = campaignsData?.message || 'Brevo campaigns request failed';
-      console.error('[Brevo] Campaigns error:', errorMsg, '| status:', campaignsRes.status);
-      throw new Error(errorMsg);
+    const data = await parseJsonSafe(res, null);
+
+    console.log('[SendPulse] token response status:', res.status);
+    console.log('[SendPulse] token response body:', JSON.stringify(data));
+
+    if (!res.ok) {
+      const spError =
+        data?.error_description ||
+        data?.error ||
+        data?.message ||
+        'SendPulse token request failed';
+
+      console.error('[SendPulse] Token error:', spError, '| status:', res.status, '| raw:', JSON.stringify(data));
+      throw new Error(spError);
     }
 
-    const campaigns = Array.isArray(campaignsData?.campaigns) ? campaignsData.campaigns : [];
+    console.log('[SendPulse] Token obtained successfully');
+
+    return {
+      token: data?.access_token || null,
+      error: null,
+      debug: null,
+    };
+  } catch (e) {
+    console.error('[SendPulse] fetchSendPulseToken failed:', e.message);
+    return {
+      token: null,
+      error: maskErrorDetails(e, 'SendPulse auth'),
+      debug: process.env.NODE_ENV !== 'production' ? e.message || 'SendPulse token failed' : null,
+    };
+  }
+}
+
+function unwrapArrayPayload(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.result)) return payload.result;
+  return [];
+}
+
+async function fetchSendPulseStats(token) {
+  try {
+    const headers = { Authorization: `Bearer ${token}` };
+
+    const [listsRes, campaignsRes] = await Promise.all([
+      fetch('https://api.sendpulse.com/addressbooks?limit=10&offset=0', { headers }),
+      fetch('https://api.sendpulse.com/campaigns?limit=5&offset=0', { headers }),
+    ]);
+
+    const listsJson = listsRes.ok ? await parseJsonSafe(listsRes, []) : [];
+    const campaignsJson = campaignsRes.ok ? await parseJsonSafe(campaignsRes, []) : [];
+
+    if (!listsRes.ok) {
+      throw new Error(listsJson?.error || listsJson?.message || 'SendPulse addressbooks failed');
+    }
+    if (!campaignsRes.ok) {
+      throw new Error(campaignsJson?.error || campaignsJson?.message || 'SendPulse campaigns failed');
+    }
+
+    const lists = unwrapArrayPayload(listsJson);
+    const campaigns = unwrapArrayPayload(campaignsJson);
+
+    const totalSubscribers = lists.reduce(
+      (sum, list) => sum + safeNumber(list?.all_email_qty, 0),
+      0
+    );
 
     const withStats = campaigns.filter((c) => safeNumber(c?.statistics?.sent, 0) > 0);
 
@@ -322,8 +355,6 @@ async function fetchBrevoStats() {
         }, 0) / withStats.length
       : 0;
 
-    console.log('[Brevo] Stats obtained successfully');
-
     return {
       totalSubscribers,
       emailOpenRate: formatPct(avgOpenRate),
@@ -335,7 +366,6 @@ async function fetchBrevoStats() {
       debug: null,
     };
   } catch (e) {
-    console.error('[Brevo] fetchBrevoStats failed:', e.message);
     return {
       totalSubscribers: 0,
       emailOpenRate: '0.0%',
@@ -343,8 +373,8 @@ async function fetchBrevoStats() {
       emailReplyRate: 'N/A',
       emailRevenuePerCampaign: '$0',
       topCampaigns: [],
-      error: maskErrorDetails(e, 'Brevo API'),
-      debug: process.env.NODE_ENV !== 'production' ? e.message || 'Brevo fetch failed' : null,
+      error: maskErrorDetails(e, 'SendPulse API'),
+      debug: process.env.NODE_ENV !== 'production' ? e.message || 'SendPulse fetch failed' : null,
     };
   }
 }
@@ -373,84 +403,6 @@ async function fetchSheetsData() {
       data: null,
       error: maskErrorDetails(err, 'Google Sheets webhook'),
       debug: process.env.NODE_ENV !== 'production' ? err.message || 'Sheets fetch failed' : null,
-    };
-  }
-}
-
-async function fetchNotionData() {
-  const apiKey = process.env.NOTION_API_KEY;
-  const ideasDbId = process.env.NOTION_IDEAS_DB_ID;
-  const contentDbId = process.env.NOTION_CONTENT_DB_ID;
-  const automationsDbId = process.env.NOTION_AUTOMATIONS_DB_ID;
-
-  if (!apiKey) {
-    return { data: null, error: 'Notion API key not set', debug: null };
-  }
-
-  const databaseIds = [
-    { key: 'ideas', id: ideasDbId },
-    { key: 'content', id: contentDbId },
-    { key: 'automations', id: automationsDbId },
-  ].filter(({ id }) => id);
-
-  if (databaseIds.length === 0) {
-    return { data: null, error: 'No Notion database IDs configured', debug: null };
-  }
-
-  try {
-    const notionData = {};
-    const errors = [];
-
-    for (const { key, id } of databaseIds) {
-      try {
-        const url = new URL(`https://api.notion.com/v1/databases/${id}/query`);
-
-        const res = await fetch(url.toString(), {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${apiKey.trim()}`,
-            'Notion-Version': '2022-06-28',
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({}),
-        });
-
-        if (!res.ok) {
-          const errorData = await parseJsonSafe(res, {});
-          const errorMsg = errorData?.message || `Notion API returned ${res.status}`;
-          console.error(`[Notion] API error for ${key}:`, errorMsg, '| status:', res.status);
-          errors.push(`${key}: ${errorMsg}`);
-          notionData[key] = { error: errorMsg };
-          continue;
-        }
-
-        const data = await parseJsonSafe(res, {});
-        console.log(`[Notion] Fetched ${key} data successfully`);
-        notionData[key] = data;
-      } catch (err) {
-        console.error(`[Notion] Failed to fetch ${key}:`, err.message);
-        errors.push(`${key}: ${err.message}`);
-        notionData[key] = { error: err.message };
-      }
-    }
-
-    const combinedData = {
-      ideas: notionData.ideas || null,
-      content: notionData.content || null,
-      automations: notionData.automations || null,
-    };
-
-    return {
-      data: combinedData,
-      error: errors.length > 0 ? errors.join('; ') : null,
-      debug: null,
-    };
-  } catch (err) {
-    console.error('[Notion] fetchNotionData failed:', err.message);
-    return {
-      data: null,
-      error: maskErrorDetails(err, 'Notion API'),
-      debug: process.env.NODE_ENV !== 'production' ? err.message || 'Notion fetch failed' : null,
     };
   }
 }
@@ -556,7 +508,7 @@ function buildAlerts(checks) {
   if (checks.emailError) {
     alerts.push({
       type: 'warning',
-      source: 'Brevo',
+      source: 'SendPulse',
       message: checks.emailError,
     });
   }
@@ -566,14 +518,6 @@ function buildAlerts(checks) {
       type: 'info',
       source: 'Google Sheets',
       message: checks.sheetsError,
-    });
-  }
-
-  if (checks.notionError) {
-    alerts.push({
-      type: 'warning',
-      source: 'Notion',
-      message: checks.notionError,
     });
   }
 
@@ -607,15 +551,11 @@ function buildEnvStatus() {
     dashboardApiKeySet: !!process.env.DASHBOARD_API_KEY,
     facebookGroupIdSet: !!process.env.FACEBOOK_GROUP_ID,
     facebookAccessTokenSet: !!process.env.FACEBOOK_ACCESS_TOKEN,
-    brevoApiKeySet: !!process.env.BREVO_API_KEY,
-    brevoListIdSet: !!process.env.BREVO_LIST_ID,
+    sendPulseUserIdSet: !!process.env.SENDPULSE_API_USER_ID,
+    sendPulseSecretSet: !!process.env.SENDPULSE_API_SECRET,
     model: (process.env.MODEL || 'llama-3.3-70b-versatile').trim(),
     sheetsWebhookUrlSet: !!process.env.SHEETS_WEBHOOK_URL,
     groqApiKeySet: !!process.env.GROQ_API_KEY,
-    notionApiKeySet: !!process.env.NOTION_API_KEY,
-    notionIdeasDbSet: !!process.env.NOTION_IDEAS_DB_ID,
-    notionContentDbSet: !!process.env.NOTION_CONTENT_DB_ID,
-    notionAutomationsDbSet: !!process.env.NOTION_AUTOMATIONS_DB_ID,
     vercelEnv: process.env.VERCEL_ENV || 'unknown',
     nodeEnv: process.env.NODE_ENV || 'unknown',
   };
@@ -678,13 +618,8 @@ export default async function handler(req, res) {
     }
 
     if (action === 'brain.brief') {
-      // Dynamically check Notion connection status
-      const hasNotionKey = !!process.env.NOTION_API_KEY;
-      const hasAnyNotionDb = !!(process.env.NOTION_IDEAS_DB_ID || process.env.NOTION_CONTENT_DB_ID || process.env.NOTION_AUTOMATIONS_DB_ID);
-      const notionConnected = hasNotionKey && hasAnyNotionDb;
-
       return res.status(200).json({
-        generatedAt: new Date().toISOString(),
+        generatedAt: '2026-05-25T17:25:00-04:00',
         status: 'ok',
         daily_brief: {
           headline: 'One-sentence executive summary',
@@ -722,7 +657,7 @@ export default async function handler(req, res) {
           },
         ],
         source_health: {
-          notion: notionConnected ? 'connected' : 'not_connected',
+          notion: 'connected',
           antigravity: 'connected',
           google_sheets: 'connected',
           slack: 'connected',
@@ -787,55 +722,31 @@ export default async function handler(req, res) {
       });
     }
 
-    if (action === 'sheets') {
-      if (!checkDashboardApiKey(req)) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-
-      const sheetsUrl = process.env.SHEETS_WEBHOOK_URL;
-      if (!sheetsUrl) {
-        return res.status(500).json({ error: 'Sheets webhook URL not configured' });
-      }
-
-      try {
-        const url = new URL(sheetsUrl);
-        url.searchParams.set('action', 'dashboard');
-        url.searchParams.set('t', String(Date.now()));
-
-        const response = await fetch(url.toString(), {
-          headers: { 'Cache-Control': 'no-store' },
-        });
-
-        if (!response.ok) {
-          throw new Error(`Sheets returned ${response.status}`);
-        }
-
-        const data = await parseJsonSafe(response, {});
-        return res.status(200).json(data);
-      } catch (error) {
-        console.error('Sheets proxy error:', error);
-        return res.status(500).json({
-          error: 'Sheets fetch failed',
-          details: process.env.NODE_ENV !== 'production' ? error.message : 'An internal error occurred.',
-        });
-      }
-    }
-
     if (action === 'dashboard') {
       if (!checkDashboardApiKey(req)) {
         return res.status(401).json({ error: 'Unauthorized' });
       }
 
-      const [fbData, brevoData, sheetsResult, notionResult] = await Promise.all([
+      const [fbData, spTokenResult, sheetsResult] = await Promise.all([
         fetchFacebookGroup(),
-        fetchBrevoStats(),
+        fetchSendPulseToken(),
         fetchSheetsData(),
-        fetchNotionData(),
       ]);
 
-      const spData = brevoData;
+      const spData = spTokenResult.token
+        ? await fetchSendPulseStats(spTokenResult.token)
+        : {
+            totalSubscribers: 0,
+            emailOpenRate: '0.0%',
+            emailClickRate: '0.0%',
+            emailReplyRate: 'N/A',
+            emailRevenuePerCampaign: '$0',
+            topCampaigns: [],
+            error: spTokenResult.error,
+            debug: spTokenResult.debug,
+          };
+
       const sheetsData = sheetsResult.data;
-      const notionData = notionResult.data;
 
       const communityCount = safeNumber(fbData?.member_count, safeNumber(sheetsData?.communityCount, 0));
       const revenueNumber = safeNumber(sheetsData?.revenue, NaN);
@@ -873,7 +784,6 @@ export default async function handler(req, res) {
         facebookError: fbData?.error,
         emailError: spData?.error,
         sheetsError: sheetsResult?.error,
-        notionError: notionResult?.error,
         groqSet: !!process.env.GROQ_API_KEY,
         aiError: aiBrief?.error,
         facebookEnvSet: !!(process.env.FACEBOOK_GROUP_ID && process.env.FACEBOOK_ACCESS_TOKEN),
@@ -892,7 +802,6 @@ export default async function handler(req, res) {
             facebook: fbData?.debug || null,
             brevo: spData?.debug || null,
             sheets: sheetsResult?.debug || null,
-            notion: notionResult?.debug || null,
             groq: aiBrief?.debug || null,
           }
         : undefined;
@@ -904,7 +813,6 @@ export default async function handler(req, res) {
         email,
         topPosts,
         campaigns,
-        notion: notionData,
         metrics: {
           communityCount,
           communityGrowth,
