@@ -19,6 +19,7 @@ const ALLOWED_ACTIONS = new Set([
   'automation.events',
   'dashboard',
   'sheets',
+  'notion-webhook',
   'test-env',
 ]);
 
@@ -38,6 +39,7 @@ const GET_ONLY_ACTIONS = new Set([
 const POST_ONLY_ACTIONS = new Set([
   'automation.sync',
   'automation.run',
+  'notion-webhook',
 ]);
 
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
@@ -455,6 +457,71 @@ async function fetchNotionData() {
   }
 }
 
+async function processAntigravityTrigger(payload) {
+  // Extract relevant data from Notion webhook payload
+  const { database_id, action, id: pageId } = payload || {};
+
+  // Only trigger for specific databases and actions
+  const commandCenterDb = process.env.NOTION_COMMAND_CENTER_DB_ID;
+  const ideasDb = process.env.NOTION_IDEAS_DB_ID;
+
+  const isRelevantDb = database_id === commandCenterDb || database_id === ideasDb;
+  const isRelevantAction = action === 'created' || action === 'updated';
+
+  if (!isRelevantDb || !isRelevantAction) {
+    return { processed: false, reason: 'Not a relevant database/action' };
+  }
+
+  // Check if status changed to 'Pending' or new entry was created
+  const page = payload?.page?.properties;
+  const status = page?.Status?.select?.name || page?.status?.select?.name;
+
+  if (action === 'created' || status === 'Pending') {
+    // Log the trigger
+    console.log(`[Antigravity] Triggered by Notion event: ${action} on ${database_id}`);
+
+    // Fetch full page details to get command/idea data
+    const notionApiKey = process.env.NOTION_API_KEY;
+    if (notionApiKey) {
+      try {
+        const pageUrl = new URL(`https://api.notion.com/v1/pages/${pageId}`);
+        const pageRes = await fetch(pageUrl.toString(), {
+          headers: {
+            'Authorization': `Bearer ${notionApiKey.trim()}`,
+            'Notion-Version': '2022-06-28',
+          },
+        });
+
+        if (pageRes.ok) {
+          const pageData = await parseJsonSafe(pageRes, {});
+          console.log('[Antigravity] Page data:', JSON.stringify(pageData, null, 2));
+          // TODO: Process pageData and send to Antigravity API
+          // When you have Antigravity API key, call it here
+          const antigravityApiKey = process.env.ANTIGRAVITY_API_KEY;
+          if (antigravityApiKey) {
+            // Example: POST to Antigravity webhook or API
+            // const agUrl = new URL('https://api.antigravity.so/v1/workflows/trigger');
+            // await fetch(agUrl.toString(), {
+            //   method: 'POST',
+            //   headers: { 'Authorization': `Bearer ${antigravityApiKey}`, 'Content-Type': 'application/json' },
+            //   body: JSON.stringify({ pageId, database_id, action, pageData }),
+            // });
+            console.log('[Antigravity] Ready to call Antigravity API (implement based on their docs)');
+          } else {
+            console.log('[Antigravity] ANTIGRAVITY_API_KEY not set - skipping API call');
+          }
+        }
+      } catch (err) {
+        console.error('[Antigravity] Failed to fetch page:', err.message);
+      }
+    }
+
+    return { processed: true, trigger: action, pageId };
+  }
+
+  return { processed: false, reason: 'Status not Pending or not new entry' };
+}
+
 async function fetchAIBrief(context) {
   const apiKey = process.env.GROQ_API_KEY;
   const model = (process.env.MODEL || 'llama-3.3-70b-versatile').trim();
@@ -616,6 +683,9 @@ function buildEnvStatus() {
     notionIdeasDbSet: !!process.env.NOTION_IDEAS_DB_ID,
     notionContentDbSet: !!process.env.NOTION_CONTENT_DB_ID,
     notionAutomationsDbSet: !!process.env.NOTION_AUTOMATIONS_DB_ID,
+    antigravityApiKeySet: !!process.env.ANTIGRAVITY_API_KEY,
+    antigravityWebhookSecretSet: !!process.env.NOTION_WEBHOOK_SECRET,
+    commandCenterDbSet: !!process.env.NOTION_COMMAND_CENTER_DB_ID,
     vercelEnv: process.env.VERCEL_ENV || 'unknown',
     nodeEnv: process.env.NODE_ENV || 'unknown',
   };
@@ -638,6 +708,52 @@ export default async function handler(req, res) {
 
   if (methodValidation) {
     return res.status(methodValidation.status).json(methodValidation.body);
+  }
+
+  // Handle Notion webhook for Antigravity triggers
+  if (action === 'notion-webhook') {
+    const webhookSecret = process.env.NOTION_WEBHOOK_SECRET;
+    
+    if (!webhookSecret) {
+      console.error('[Antigravity] Notion webhook secret not configured');
+      return res.status(500).json({ 
+        error: 'Notion webhook secret not configured',
+        action: 'notion-webhook'
+      });
+    }
+
+    // Notion webhooks use POST
+    if (req.method !== 'POST') {
+      return res.status(405).json({ 
+        error: 'Method not allowed - use POST',
+        action: 'notion-webhook'
+      });
+    }
+
+    try {
+      const body = await req.json();
+      const result = await processAntigravityTrigger(body);
+
+      if (result.processed) {
+        console.log('[Antigravity] Webhook processed successfully:', result);
+        return res.status(200).json({ 
+          ok: true, 
+          result,
+          message: 'Antigravity trigger processed'
+        });
+      }
+
+      return res.status(200).json({ 
+        ok: true, 
+        message: result.reason || 'Event received but not processed'
+      });
+    } catch (err) {
+      console.error('[Antigravity] Webhook error:', err);
+      return res.status(500).json({ 
+        error: 'Webhook processing failed',
+        details: process.env.NODE_ENV !== 'production' ? err.message : 'Internal error'
+      });
+    }
   }
 
   try {
@@ -678,10 +794,15 @@ export default async function handler(req, res) {
     }
 
     if (action === 'brain.brief') {
-      // Dynamically check Notion connection status
+      // Dynamically check connection status
       const hasNotionKey = !!process.env.NOTION_API_KEY;
       const hasAnyNotionDb = !!(process.env.NOTION_IDEAS_DB_ID || process.env.NOTION_CONTENT_DB_ID || process.env.NOTION_AUTOMATIONS_DB_ID);
       const notionConnected = hasNotionKey && hasAnyNotionDb;
+
+      const hasAntigravityKey = !!process.env.ANTIGRAVITY_API_KEY;
+      const hasCommandCenterDb = !!process.env.NOTION_COMMAND_CENTER_DB_ID;
+      const hasWebhookSecret = !!process.env.NOTION_WEBHOOK_SECRET;
+      const antigravityConnected = hasAntigravityKey && hasCommandCenterDb && hasWebhookSecret;
 
       return res.status(200).json({
         generatedAt: new Date().toISOString(),
@@ -723,7 +844,7 @@ export default async function handler(req, res) {
         ],
         source_health: {
           notion: notionConnected ? 'connected' : 'not_connected',
-          antigravity: 'connected',
+          antigravity: antigravityConnected ? 'connected' : 'not_connected',
           google_sheets: 'connected',
           slack: 'connected',
           gumloop: 'connected',
