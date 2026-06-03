@@ -21,6 +21,7 @@ const ALLOWED_ACTIONS = new Set([
   'sheets',
   'notion-webhook',
   'test-env',
+  'hermes',
 ]);
 
 const GET_ONLY_ACTIONS = new Set([
@@ -40,6 +41,7 @@ const POST_ONLY_ACTIONS = new Set([
   'automation.sync',
   'automation.run',
   'notion-webhook',
+  'hermes',
 ]);
 
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
@@ -899,6 +901,74 @@ export default async function handler(req, res) {
         status: 'success',
         message: 'Dashboard command executed',
       });
+    }
+
+    if (action === 'hermes') {
+      // Hermes AI assistant endpoint - accepts dashboard snapshot and user message, returns AI reply
+      if (!checkDashboardApiKey(req)) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      try {
+        const body = await req.json();
+        const message = body?.message;
+
+        if (!message || typeof message !== 'string') {
+          return res.status(400).json({ error: 'Missing or invalid message field' });
+        }
+
+        // Use Groq to generate a response
+        const groqApiKey = process.env.GROQ_API_KEY;
+        const model = (process.env.MODEL || 'llama-3.3-70b-versatile').trim();
+
+        if (!groqApiKey) {
+          // Fallback response if Groq is not configured
+          return res.status(200).json({
+            reply: 'Hermes is ready but AI model is not configured. Please set GROQ_API_KEY to enable AI responses.',
+          });
+        }
+
+        const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${groqApiKey.trim()}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model,
+            messages: [
+              {
+                role: "system",
+                content: "You are Hermes, the DigitallyDefined business partner. Respond using plain text only. No markdown, no formatting, no lists, no symbols. Use simple sentences. You help me grow the digital assets I already have. You evaluate my assets based on leverage, traffic potential, monetization potential, speed of execution, and long term compounding value. You help me choose which assets to build first so I can show Gen X women real proof. You understand that digital assets include websites, rank and rent sites, niche content sites, email lists, digital products, templates, content hubs, and automation systems. You help me decide which ones have the highest return with the least friction. You always think in terms of working smarter, not harder. You focus on leverage, automation, and compounding results. You help me build assets that grow over time and become examples for Gen X women who need to see what is possible. You understand that Gen X women trust results they can see. You help me build assets that become evidence, demonstrations, and case studies. You help me think in data, patterns, and strategy. You help me build digital real estate that supports me and also teaches other women how to do the same."
+              },
+              { role: 'user', content: message },
+            ],
+            temperature: 0.35,
+            max_tokens: 650,
+          }),
+        });
+
+        const data = await parseJsonSafe(res, {});
+
+        if (!res.ok) {
+          const errorMsg = data?.error?.message || 'Groq API error';
+          console.error('[Hermes] Groq API error:', errorMsg);
+          return res.status(500).json({
+            error: 'AI service error',
+            reply: 'Sorry, I encountered an error processing your request. Please try again.',
+          });
+        }
+
+        const reply = data?.choices?.[0]?.message?.content || 'I could not generate a response.';
+
+        return res.status(200).json({ reply });
+      } catch (err) {
+        console.error('[Hermes] Error:', err);
+        return res.status(500).json({
+          error: 'Hermes request failed',
+          reply: 'Sorry, I encountered an error. Please try again.',
+        });
+      }
     }
 
     if (action === 'automation.events') {
