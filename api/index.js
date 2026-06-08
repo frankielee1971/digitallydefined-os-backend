@@ -917,49 +917,107 @@ export default async function handler(req, res) {
           return res.status(400).json({ error: 'Missing or invalid message field' });
         }
 
-        // Use Groq to generate a response
-        const groqApiKey = process.env.GROQ_API_KEY;
-        const model = (process.env.MODEL || 'llama-3.3-70b-versatile').trim();
+        // Strip ALL markdown formatting to ensure plain text only
+        const stripMarkdown = (text) => {
+          return text
+            .replace(/```[\s\S]*?```/g, '')  // Remove code blocks
+            .replace(/\*\*\*[^\*]+\*\*\*/g, '')  // Remove ***bold italic***
+            .replace(/\*\*[^\*]+\*\*/g, '')  // Remove **bold**
+            .replace(/\*[^\*]+\*/g, '')  // Remove *italic*
+            .replace(/_[^_]+_/g, '')  // Remove _italic_
+            .replace(/`[^`]+`/g, '')  // Remove `code`
+            .replace(/^>\s*/gm, '')  // Remove blockquotes
+            .replace(/^\s*[-*+]\s+/gm, '')  // Remove list items
+            .replace(/^\s*\d+\.\s+/gm, '')  // Remove numbered lists
+            .replace(/[\n\r]+/g, ' ')  // Normalize newlines to single space
+            .replace(/\s+/g, ' ')  // Collapse multiple spaces
+            .trim();
+        };
 
-        if (!groqApiKey) {
-          // Fallback response if Groq is not configured
-          return res.status(200).json({
-            reply: 'Hermes is ready but AI model is not configured. Please set GROQ_API_KEY to enable AI responses.',
-          });
-        }
+        const hermesSystemPrompt = "You are Hermes, the DigitallyDefined business partner. RESPOND USING PLAIN TEXT ONLY. NO MARKDOWN. NO FORMATTING. NO BOLD. NO ITALICS. NO LISTS. NO BULLETS. NO NUMBERED LISTS. NO CODE BLOCKS. NO SYMBOLS. NO SPECIAL CHARACTERS. Use simple sentences with normal punctuation only. You help me grow the digital assets I already have. You evaluate my assets based on leverage, traffic potential, monetization potential, speed of execution, and long term compounding value. You help me choose which assets to build first so I can show Gen X women real proof. You understand that digital assets include websites, rank and rent sites, niche content sites, email lists, digital products, templates, content hubs, and automation systems. You help me decide which ones have the highest return with the least friction. You always think in terms of working smarter, not harder. You focus on leverage, automation, and compounding results. You help me build assets that grow over time and become examples for Gen X women who need to see what is possible. You understand that Gen X women trust results they can see. You help me build assets that become evidence, demonstrations, and case studies. You help me think in data, patterns, and strategy. You help me build digital real estate that supports me and also teaches other women how to do the same. IMPORTANT: Every word you output must be plain text. Never use markdown syntax under any circumstances.";
 
-        const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${groqApiKey.trim()}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model,
-            messages: [
-              {
-                role: "system",
-                content: "You are Hermes, the DigitallyDefined business partner. Respond using plain text only. No markdown, no formatting, no lists, no symbols. Use simple sentences. You help me grow the digital assets I already have. You evaluate my assets based on leverage, traffic potential, monetization potential, speed of execution, and long term compounding value. You help me choose which assets to build first so I can show Gen X women real proof. You understand that digital assets include websites, rank and rent sites, niche content sites, email lists, digital products, templates, content hubs, and automation systems. You help me decide which ones have the highest return with the least friction. You always think in terms of working smarter, not harder. You focus on leverage, automation, and compounding results. You help me build assets that grow over time and become examples for Gen X women who need to see what is possible. You understand that Gen X women trust results they can see. You help me build assets that become evidence, demonstrations, and case studies. You help me think in data, patterns, and strategy. You help me build digital real estate that supports me and also teaches other women how to do the same."
+        // Try Antigravity MCP first
+        const antigravityApiKey = process.env.ANTIGRAVITY_API_KEY;
+        let reply = null;
+
+        if (antigravityApiKey) {
+          try {
+            console.log('[Hermes] Trying Antigravity MCP...');
+            const agResponse = await fetch('https://api.antigravity.so/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${antigravityApiKey.trim()}`,
+                'Content-Type': 'application/json',
               },
-              { role: 'user', content: message },
-            ],
-            temperature: 0.35,
-            max_tokens: 650,
-          }),
-        });
+              body: JSON.stringify({
+                model: process.env.ANTIGRAVITY_MODEL || 'default',
+                messages: [
+                  { role: "system", content: hermesSystemPrompt },
+                  { role: "user", content: message },
+                ],
+                temperature: 0.35,
+                max_tokens: 650,
+              }),
+            });
 
-        const data = await parseJsonSafe(res, {});
+            const agData = await parseJsonSafe(agResponse, {});
 
-        if (!res.ok) {
-          const errorMsg = data?.error?.message || 'Groq API error';
-          console.error('[Hermes] Groq API error:', errorMsg);
-          return res.status(500).json({
-            error: 'AI service error',
-            reply: 'Sorry, I encountered an error processing your request. Please try again.',
-          });
+            if (agResponse.ok && agData?.choices?.[0]?.message?.content) {
+              reply = stripMarkdown(agData.choices[0].message.content);
+              console.log('[Hermes] Antigravity MCP response received');
+            } else {
+              const agErrorMsg = agData?.error?.message || 'Antigravity API error';
+              console.error('[Hermes] Antigravity MCP error:', agErrorMsg);
+            }
+          } catch (agErr) {
+            console.error('[Hermes] Antigravity MCP connection error:', agErr.message);
+          }
+        } else {
+          console.log('[Hermes] ANTIGRAVITY_API_KEY not set, skipping Antigravity MCP');
         }
 
-        const reply = data?.choices?.[0]?.message?.content || 'I could not generate a response.';
+        // Fall back to Groq if Antigravity not available or failed
+        if (!reply) {
+          const groqApiKey = process.env.GROQ_API_KEY;
+          const model = (process.env.MODEL || 'llama-3.3-70b-versatile').trim();
+
+          if (!groqApiKey) {
+            return res.status(200).json({
+              reply: 'Hermes is ready but AI model is not configured. Please set GROQ_API_KEY or ANTIGRAVITY_API_KEY to enable AI responses.',
+            });
+          }
+
+          console.log('[Hermes] Falling back to Groq...');
+          const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${groqApiKey.trim()}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model,
+              messages: [
+                { role: "system", content: hermesSystemPrompt },
+                { role: "user", content: message },
+              ],
+              temperature: 0.35,
+              max_tokens: 650,
+            }),
+          });
+
+          const groqData = await parseJsonSafe(groqResponse, {});
+
+          if (!groqResponse.ok) {
+            const errorMsg = groqData?.error?.message || 'Groq API error';
+            console.error('[Hermes] Groq API error:', errorMsg);
+            return res.status(500).json({
+              error: 'AI service error',
+              reply: 'Sorry, I encountered an error processing your request. Please try again.',
+            });
+          }
+
+          reply = stripMarkdown(groqData?.choices?.[0]?.message?.content || 'I could not generate a response.');
+        }
 
         return res.status(200).json({ reply });
       } catch (err) {
