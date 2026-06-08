@@ -1,22 +1,12 @@
 export default async function handler(req, res) {
-  // === CORS Configuration ===
-  const origin = req.headers.origin;
-  const allowedOrigins = [
-    'https://dashboard.digitallydefined.online',
-    'https://digitallydefined.online',
-    'http://localhost:5173',
-    'http://localhost:3000'
-  ];
-
-  // Set CORS headers for all responses
-  res.setHeader('Access-Control-Allow-Origin', allowedOrigins.includes(origin) ? origin : allowedOrigins[0]);
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  // ✅ Allow dashboard domain to talk to backend
+  res.setHeader('Access-Control-Allow-Origin', 'https://dashboard.digitallydefined.online');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-api-key, Authorization');
-  res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
 
-  // Handle preflight requests (OPTIONS)
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   // Only allow POST for actual requests
