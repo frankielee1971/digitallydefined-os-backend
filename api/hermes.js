@@ -1,3 +1,5 @@
+// trigger rebuild — forces Vercel to refresh environment variables
+
 export default async function handler(req, res) {
   // ✅ Allow dashboard domain to talk to backend
   res.setHeader('Access-Control-Allow-Origin', 'https://dashboard.digitallydefined.online');
@@ -10,14 +12,15 @@ export default async function handler(req, res) {
   }
 
   // Only allow POST for actual requests
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
     const { message } = JSON.parse(req.body);
 
-    const hermesSystemPrompt = "You are Hermes, the DigitallyDefined business partner. RESPOND USING PLAIN TEXT ONLY. NO MARKDOWN. NO FORMATTING. NO BOLD. NO ITALICS. NO LISTS. NO BULLETS. NO NUMBERED LISTS. NO CODE BLOCKS. NO SYMBOLS. NO SPECIAL CHARACTERS. Use simple sentences with normal punctuation only.";
+    const hermesSystemPrompt =
+      'You are Hermes, the DigitallyDefined business partner. RESPOND USING PLAIN TEXT ONLY. NO MARKDOWN. NO FORMATTING. NO BOLD. NO ITALICS. NO LISTS. NO BULLETS. NO NUMBERED LISTS. NO CODE BLOCKS. NO SYMBOLS. NO SPECIAL CHARACTERS. Use simple sentences with normal punctuation only.';
 
     // Strip ALL markdown formatting to ensure plain text only
     const stripMarkdown = (text) => {
@@ -36,6 +39,13 @@ export default async function handler(req, res) {
         .trim();
     };
 
+    // 🧩 Log Notion environment variables for debugging
+    console.log('Active Notion DB IDs:', {
+      ideas: process.env.NOTION_IDEAS_DB,
+      content: process.env.NOTION_CONTENT_DB,
+      automations: process.env.NOTION_AUTOMATIONS_DB,
+    });
+
     let reply = null;
 
     // Try Antigravity MCP first
@@ -46,14 +56,14 @@ export default async function handler(req, res) {
         const agResponse = await fetch('https://api.antigravity.so/v1/chat/completions', {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${antigravityApiKey.trim()}`,
+            Authorization: `Bearer ${antigravityApiKey.trim()}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
             model: process.env.ANTIGRAVITY_MODEL || 'default',
             messages: [
-              { role: "system", content: hermesSystemPrompt },
-              { role: "user", content: message },
+              { role: 'system', content: hermesSystemPrompt },
+              { role: 'user', content: message },
             ],
             temperature: 0.35,
             max_tokens: 650,
@@ -75,33 +85,34 @@ export default async function handler(req, res) {
       const nousApiKey = process.env.NOUS_API_KEY;
       if (!nousApiKey) {
         return res.status(200).json({
-          reply: 'Hermes is ready but AI model is not configured. Please set ANTIGRAVITY_API_KEY or NOUS_API_KEY to enable AI responses.',
+          reply:
+            'Hermes is ready but AI model is not configured. Please set ANTIGRAVITY_API_KEY or NOUS_API_KEY to enable AI responses.',
         });
       }
 
       console.log('[Hermes] Falling back to NousResearch...');
-      const response = await fetch("https://api.nousresearch.com/v1/chat/completions", {
-        method: "POST",
+      const response = await fetch('https://api.nousresearch.com/v1/chat/completions', {
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${nousApiKey}`
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${nousApiKey}`,
         },
         body: JSON.stringify({
-          model: "qwen-3.7-pro",
+          model: 'qwen-3.7-pro',
           messages: [
-            { role: "system", content: hermesSystemPrompt },
-            { role: "user", content: message }
-          ]
-        })
+            { role: 'system', content: hermesSystemPrompt },
+            { role: 'user', content: message },
+          ],
+        }),
       });
 
       const data = await response.json();
-      reply = stripMarkdown(data.choices?.[0]?.message?.content || "No response from Hermes.");
+      reply = stripMarkdown(data.choices?.[0]?.message?.content || 'No response from Hermes.');
     }
 
     return res.status(200).json({ reply });
   } catch (error) {
-    console.error("Hermes API Error:", error);
-    return res.status(500).json({ error: "Hermes integration failed" });
+    console.error('Hermes API Error:', error);
+    return res.status(500).json({ error: 'Hermes integration failed' });
   }
 }
