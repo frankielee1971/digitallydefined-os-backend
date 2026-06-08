@@ -17,7 +17,9 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { message } = JSON.parse(req.body);
+    const { messages, message } = JSON.parse(req.body);
+    // Accept both formats: { message: string } or { messages: array }
+    const userMessage = message || (messages?.length ? messages[messages.length - 1]?.content : '') || '';
 
     const hermesSystemPrompt =
       'You are Hermes, the DigitallyDefined business partner. RESPOND USING PLAIN TEXT ONLY. NO MARKDOWN. NO FORMATTING. NO BOLD. NO ITALICS. NO LISTS. NO BULLETS. NO NUMBERED LISTS. NO CODE BLOCKS. NO SYMBOLS. NO SPECIAL CHARACTERS. Use simple sentences with normal punctuation only.';
@@ -63,7 +65,7 @@ export default async function handler(req, res) {
             model: process.env.ANTIGRAVITY_MODEL || 'default',
             messages: [
               { role: 'system', content: hermesSystemPrompt },
-              { role: 'user', content: message },
+              { role: 'user', content: userMessage },
             ],
             temperature: 0.35,
             max_tokens: 650,
@@ -101,7 +103,7 @@ export default async function handler(req, res) {
           model: 'qwen-3.7-pro',
           messages: [
             { role: 'system', content: hermesSystemPrompt },
-            { role: 'user', content: message },
+            { role: 'user', content: userMessage },
           ],
         }),
       });
