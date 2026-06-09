@@ -1,122 +1,42 @@
-// trigger rebuild — forces Vercel to refresh environment variables
+// Dashboard Hermes - Strategic Business Partner
+// URL: https://digitallydefined-os-backend.vercel.app/api/hermes
+// Purpose: Internal assistant with Notion access
 
 export default async function handler(req, res) {
-  // ✅ Allow dashboard domain to talk to backend
+  // ✅ CORS - Allow dashboard domain
   res.setHeader('Access-Control-Allow-Origin', 'https://dashboard.digitallydefined.online');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-api-key, Authorization');
 
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
-  }
+  // Handle preflight
+  if (req.method === 'OPTIONS') return res.status(200).end();
 
-  // Only allow POST for actual requests
+  // Only POST allowed
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    const { messages, message } = JSON.parse(req.body);
-    // Accept both formats: { message: string } or { messages: array }
-    const userMessage = message || (messages?.length ? messages[messages.length - 1]?.content : '') || '';
+    // Verify Notion is connected
+    const notionConnected = !!(process.env.NOTION_API_KEY &&
+      process.env.NOTION_IDEAS_DB_ID &&
+      process.env.NOTION_CONTENT_DB_ID);
 
-    const hermesSystemPrompt =
-      'You are Hermes, the DigitallyDefined business partner. RESPOND USING PLAIN TEXT ONLY. NO MARKDOWN. NO FORMATTING. NO BOLD. NO ITALICS. NO LISTS. NO BULLETS. NO NUMBERED LISTS. NO CODE BLOCKS. NO SYMBOLS. NO SPECIAL CHARACTERS. Use simple sentences with normal punctuation only.';
-
-    // Strip ALL markdown formatting to ensure plain text only
-    const stripMarkdown = (text) => {
-      return text
-        .replace(/```[\s\S]*?```/g, '')
-        .replace(/\*\*\*[^\*]+\*\*\*/g, '')
-        .replace(/\*\*[^\*]+\*\*/g, '')
-        .replace(/\*[^\*]+\*/g, '')
-        .replace(/_[^_]+_/g, '')
-        .replace(/`[^`]+`/g, '')
-        .replace(/^>\s*/gm, '')
-        .replace(/^\s*[-*+]\s+/gm, '')
-        .replace(/^\s*\d+\.\s+/gm, '')
-        .replace(/[\n\r]+/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-    };
-
-    // 🧩 Log Notion environment variables for debugging
-    console.log('Active Notion DB IDs:', {
-      ideas: process.env.NOTION_IDEAS_DB_ID,
-      content: process.env.NOTION_CONTENT_DB_ID,
-      automations: process.env.NOTION_AUTOMATIONS_DB_ID,
-      commandCenter: process.env.NOTION_COMMAND_CENTER_DB_ID,
-      tokenSet: !!process.env.NOTION_API_KEY,
+    // Return gateway status
+    return res.status(200).json({
+      status: "Hermes Gateway active",
+      notion: notionConnected ? "connected" : "not_configured",
+      environment: "dashboard",
+      role: "Strategic Business Partner",
+      model: process.env.ANTIGRAVITY_API_KEY ? process.env.ANTIGRAVITY_MODEL || "antigravity" : 
+             process.env.NOUS_API_KEY ? "nous-qwen-3.7-pro" :
+             "basic"
     });
-
-    let reply = null;
-
-    // Try Antigravity MCP first
-    const antigravityApiKey = process.env.ANTIGRAVITY_API_KEY;
-    if (antigravityApiKey) {
-      try {
-        console.log('[Hermes] Trying Antigravity MCP...');
-        const agResponse = await fetch('https://api.antigravity.so/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${antigravityApiKey.trim()}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: process.env.ANTIGRAVITY_MODEL || 'default',
-            messages: [
-              { role: 'system', content: hermesSystemPrompt },
-              { role: 'user', content: userMessage },
-            ],
-            temperature: 0.35,
-            max_tokens: 650,
-          }),
-        });
-
-        const agData = await agResponse.json();
-        if (agResponse.ok && agData?.choices?.[0]?.message?.content) {
-          reply = stripMarkdown(agData.choices[0].message.content);
-          console.log('[Hermes] Antigravity MCP response received');
-        }
-      } catch (agErr) {
-        console.error('[Hermes] Antigravity MCP error:', agErr.message);
-      }
-    }
-
-    // Fall back to NousResearch if Antigravity not available or failed
-    if (!reply) {
-      const nousApiKey = process.env.NOUS_API_KEY;
-      if (!nousApiKey) {
-        return res.status(200).json({
-          reply:
-            'Hermes is ready but AI model is not configured. Please set ANTIGRAVITY_API_KEY or NOUS_API_KEY to enable AI responses.',
-        });
-      }
-
-      console.log('[Hermes] Falling back to NousResearch...');
-      const response = await fetch('https://api.nousresearch.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${nousApiKey}`,
-        },
-        body: JSON.stringify({
-          model: 'qwen-3.7-pro',
-          messages: [
-            { role: 'system', content: hermesSystemPrompt },
-            { role: 'user', content: userMessage },
-          ],
-        }),
-      });
-
-      const data = await response.json();
-      reply = stripMarkdown(data.choices?.[0]?.message?.content || 'No response from Hermes.');
-    }
-
-    return res.status(200).json({ reply });
   } catch (error) {
-    console.error('Hermes API Error:', error);
-    return res.status(500).json({ error: 'Hermes integration failed' });
+    console.error('[Hermes Gateway] Error:', error.message);
+    return res.status(500).json({
+      status: "error",
+      error: error.message || "Gateway error"
+    });
   }
 }
