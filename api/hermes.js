@@ -43,9 +43,11 @@ export default async function handler(req, res) {
 
     // 🧩 Log Notion environment variables for debugging
     console.log('Active Notion DB IDs:', {
-      ideas: process.env.NOTION_IDEAS_DB,
-      content: process.env.NOTION_CONTENT_DB,
-      automations: process.env.NOTION_AUTOMATIONS_DB,
+      ideas: process.env.NOTION_IDEAS_DB_ID,
+      content: process.env.NOTION_CONTENT_DB_ID,
+      automations: process.env.NOTION_AUTOMATIONS_DB_ID,
+      commandCenter: process.env.NOTION_COMMAND_CENTER_DB_ID,
+      tokenSet: !!process.env.NOTION_API_KEY,
     });
 
     let reply = null;
