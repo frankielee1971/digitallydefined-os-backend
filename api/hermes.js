@@ -76,9 +76,9 @@ export default async function handler(req, res) {
       if (!text || typeof text !== 'string') return '';
       return text
         .replace(/```[\s\S]*?```/g, '')
-        .replace(/\*\*\*[^\*]++\*\*\*/g, '')
-        .replace(/\*\*[^\*]++\*\*/g, '')
-        .replace(/\*[^\*]++\*/g, '')
+        .replace(/\*\*\*[^\*]+\*\*\*/g, '')
+        .replace(/\*\*[^\*]+\*\*/g, '')
+        .replace(/\*[^\*]+\*/g, '')
         .replace(/_[^_]+_/g, '')
         .replace(/`[^`]+`/g, '')
         .replace(/^>\s*/gm, '')
