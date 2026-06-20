@@ -936,21 +936,21 @@ export default async function handler(req, res) {
 
         const hermesSystemPrompt = "You are Hermes, the DigitallyDefined business partner. RESPOND USING PLAIN TEXT ONLY. NO MARKDOWN. NO FORMATTING. NO BOLD. NO ITALICS. NO LISTS. NO BULLETS. NO NUMBERED LISTS. NO CODE BLOCKS. NO SYMBOLS. NO SPECIAL CHARACTERS. Use simple sentences with normal punctuation only. You help me grow the digital assets I already have. You evaluate my assets based on leverage, traffic potential, monetization potential, speed of execution, and long term compounding value. You help me choose which assets to build first so I can show Gen X women real proof. You understand that digital assets include websites, rank and rent sites, niche content sites, email lists, digital products, templates, content hubs, and automation systems. You help me decide which ones have the highest return with the least friction. You always think in terms of working smarter, not harder. You focus on leverage, automation, and compounding results. You help me build assets that grow over time and become examples for Gen X women who need to see what is possible. You understand that Gen X women trust results they can see. You help me build assets that become evidence, demonstrations, and case studies. You help me think in data, patterns, and strategy. You help me build digital real estate that supports me and also teaches other women how to do the same. IMPORTANT: Every word you output must be plain text. Never use markdown syntax under any circumstances.";
 
-        // Try Antigravity MCP first
-        const antigravityApiKey = process.env.ANTIGRAVITY_API_KEY;
+        // Try Vercel AI Gateway first
+        const gatewayApiKey = process.env.VERCEL_AI_GATEWAY_API_KEY;
         let reply = null;
 
-        if (antigravityApiKey) {
+        if (gatewayApiKey) {
           try {
-            console.log('[Hermes] Trying Antigravity MCP...');
-            const agResponse = await fetch('https://api.antigravity.so/v1/chat/completions', {
+            console.log('[Hermes] Trying Vercel AI Gateway...');
+            const gatewayResponse = await fetch('https://ai-gateway.vercel.com/v1/chat/completions', {
               method: 'POST',
               headers: {
-                'Authorization': `Bearer ${antigravityApiKey.trim()}`,
+                'Authorization': `Bearer ${gatewayApiKey.trim()}`,
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({
-                model: process.env.ANTIGRAVITY_MODEL || 'default',
+                model: process.env.HERMES_MODEL || 'openai/gpt-4o-mini',
                 messages: [
                   { role: "system", content: hermesSystemPrompt },
                   { role: "user", content: message },
@@ -960,30 +960,71 @@ export default async function handler(req, res) {
               }),
             });
 
-            const agData = await parseJsonSafe(agResponse, {});
+            const gatewayData = await parseJsonSafe(gatewayResponse, {});
 
-            if (agResponse.ok && agData?.choices?.[0]?.message?.content) {
-              reply = stripMarkdown(agData.choices[0].message.content);
-              console.log('[Hermes] Antigravity MCP response received');
+            if (gatewayResponse.ok && gatewayData?.choices?.[0]?.message?.content) {
+              reply = stripMarkdown(gatewayData.choices[0].message.content);
+              console.log('[Hermes] Vercel AI Gateway response received');
             } else {
-              const agErrorMsg = agData?.error?.message || 'Antigravity API error';
-              console.error('[Hermes] Antigravity MCP error:', agErrorMsg);
+              const gatewayErrorMsg = gatewayData?.error?.message || 'AI Gateway error';
+              console.error('[Hermes] Vercel AI Gateway error:', gatewayErrorMsg);
             }
-          } catch (agErr) {
-            console.error('[Hermes] Antigravity MCP connection error:', agErr.message);
+          } catch (gatewayErr) {
+            console.error('[Hermes] Vercel AI Gateway connection error:', gatewayErr.message);
           }
         } else {
-          console.log('[Hermes] ANTIGRAVITY_API_KEY not set, skipping Antigravity MCP');
+          console.log('[Hermes] VERCEL_AI_GATEWAY_API_KEY not set, skipping Vercel AI Gateway');
         }
 
-        // Fall back to Groq if Antigravity not available or failed
+        // Fall back to Antigravity if Vercel AI Gateway not available or failed
+        if (!reply) {
+          const antigravityApiKey = process.env.ANTIGRAVITY_API_KEY;
+
+          if (antigravityApiKey) {
+            try {
+              console.log('[Hermes] Trying Antigravity MCP...');
+              const agResponse = await fetch('https://api.antigravity.so/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${antigravityApiKey.trim()}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  model: process.env.ANTIGRAVITY_MODEL || 'default',
+                  messages: [
+                    { role: "system", content: hermesSystemPrompt },
+                    { role: "user", content: message },
+                  ],
+                  temperature: 0.35,
+                  max_tokens: 650,
+                }),
+              });
+
+              const agData = await parseJsonSafe(agResponse, {});
+
+              if (agResponse.ok && agData?.choices?.[0]?.message?.content) {
+                reply = stripMarkdown(agData.choices[0].message.content);
+                console.log('[Hermes] Antigravity MCP response received');
+              } else {
+                const agErrorMsg = agData?.error?.message || 'Antigravity API error';
+                console.error('[Hermes] Antigravity MCP error:', agErrorMsg);
+              }
+            } catch (agErr) {
+              console.error('[Hermes] Antigravity MCP connection error:', agErr.message);
+            }
+          } else {
+            console.log('[Hermes] ANTIGRAVITY_API_KEY not set, skipping Antigravity MCP');
+          }
+        }
+
+        // Fall back to Groq if neither primary nor secondary available
         if (!reply) {
           const groqApiKey = process.env.GROQ_API_KEY;
           const model = (process.env.MODEL || 'llama-3.3-70b-versatile').trim();
 
           if (!groqApiKey) {
             return res.status(200).json({
-              reply: 'Hermes is ready but AI model is not configured. Please set GROQ_API_KEY or ANTIGRAVITY_API_KEY to enable AI responses.',
+              reply: 'Hermes is ready but AI model is not configured. Please set VERCEL_AI_GATEWAY_API_KEY, ANTIGRAVITY_API_KEY, or GROQ_API_KEY to enable AI responses.',
             });
           }
 
