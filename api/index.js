@@ -29,10 +29,6 @@ const GET_ONLY_ACTIONS = new Set([
   'auth.verify',
   'ai.recommendations',
   'brain.brief',
-  'automation.list',
-  'automation.logs',
-  'automation.events',
-  'dashboard',
   'sheets',
   'test-env',
 ]);
@@ -143,10 +139,26 @@ function applyRateLimit(req, res) {
 }
 
 function checkDashboardApiKey(req) {
-  const apiKey = req.headers['x-api-key'];
-  const expectedKey = process.env.DASHBOARD_API_KEY;
-  if (!expectedKey) return false;
-  return apiKey === expectedKey;
+  const apiKey = String(req.headers['x-api-key'] || req.headers['authorization'] || '').trim();
+  const expectedKey = String(process.env.DASHBOARD_API_KEY || process.env.VITE_DASHBOARD_API_KEY || '').trim();
+  return expectedKey && apiKey === expectedKey;
+}
+
+function resolveAction(req) {
+  if (typeof req.query?.action === 'string') {
+    return req.query.action;
+  }
+
+  if (typeof req.url === 'string') {
+    try {
+      const parsed = new URL(req.url, 'http://localhost');
+      return parsed.searchParams.get('action') || 'status';
+    } catch {
+      return 'status';
+    }
+  }
+
+  return 'status';
 }
 
 function validateMethodForAction(req, action) {
@@ -705,7 +717,7 @@ export default async function handler(req, res) {
     return res.status(rateLimitResult.status).json(rateLimitResult.body);
   }
 
-  const action = typeof req.query?.action === 'string' ? req.query.action : 'status';
+  const action = resolveAction(req);
   const methodValidation = validateMethodForAction(req, action);
 
   if (methodValidation) {
@@ -873,6 +885,10 @@ export default async function handler(req, res) {
     }
 
     if (action === 'automation.list') {
+      if (!checkDashboardApiKey(req)) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
       return res.status(200).json({
         status: 'success',
         automations: [
@@ -883,6 +899,10 @@ export default async function handler(req, res) {
     }
 
     if (action === 'automation.logs') {
+      if (!checkDashboardApiKey(req)) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
       return res.status(200).json({
         status: 'success',
         logs: [
@@ -1071,6 +1091,10 @@ export default async function handler(req, res) {
     }
 
     if (action === 'automation.events') {
+      if (!checkDashboardApiKey(req)) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
       return res.status(200).json({
         status: 'success',
         events: [{ id: 'evt-001', type: 'sync', timestamp: Date.now() }],

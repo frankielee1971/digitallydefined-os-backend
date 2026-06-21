@@ -35,15 +35,15 @@ export default async function handler(req, res) {
 
   // === Method Validation ===
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed - use POST' });
+    return res.status(405).json({ error: 'Method not allowed - use POST', reply: '' });
   }
 
   // === API Key Validation ===
-  const providedKey = req.headers['x-api-key'] || req.headers['authorization'] || '';
-  const expectedKey = process.env.DASHBOARD_API_KEY || '';
+  const providedKey = String(req.headers['x-api-key'] || req.headers['authorization'] || '').trim();
+  const expectedKey = String(process.env.DASHBOARD_API_KEY || process.env.VITE_DASHBOARD_API_KEY || '').trim();
 
-  if (!expectedKey || String(providedKey).trim() !== String(expectedKey).trim()) {
-    return res.status(401).json({ error: 'Unauthorized - Invalid or missing API key' });
+  if (!expectedKey || providedKey !== expectedKey) {
+    return res.status(401).json({ error: 'Unauthorized - Invalid or missing API key', reply: '' });
   }
 
   try {
@@ -54,18 +54,39 @@ export default async function handler(req, res) {
     } catch (parseError) {
       return res.status(400).json({
         error: 'Invalid JSON in request body',
-        detail: parseError?.message || 'Malformed JSON'
+        detail: parseError?.message || 'Malformed JSON',
+        reply: ''
       });
     }
 
     if (!body || typeof body !== 'object') {
-      return res.status(400).json({ error: 'Request body must be a JSON object' });
+      return res.status(400).json({ error: 'Request body must be a JSON object', reply: '' });
     }
 
-    const { message, context = {}, conversation = [] } = body;
+    // Support multiple incoming shapes for the user's message so frontend/backends
+    // that send `message`, `content`, `text`, or OpenAI-style `messages`/`conversation`
+    // will all work.
+    const context = body.context || {};
+    const conversation = Array.isArray(body.conversation) ? body.conversation : (Array.isArray(body.messages) ? body.messages : []);
+
+    let message = '';
+    if (typeof body.message === 'string' && body.message.trim()) {
+      message = body.message.trim();
+    } else if (typeof body.content === 'string' && body.content.trim()) {
+      message = body.content.trim();
+    } else if (typeof body.text === 'string' && body.text.trim()) {
+      message = body.text.trim();
+    } else if (Array.isArray(body.messages) && body.messages.length) {
+      // Prefer the first user message or first item with content
+      const userMsg = body.messages.find(m => (m.role === 'user' || m.role === undefined) && m.content) || body.messages[0];
+      message = (userMsg && (userMsg.content || userMsg.text || '')).trim();
+    } else if (Array.isArray(conversation) && conversation.length) {
+      const userConv = conversation.find(c => (c.role === 'user' || c.role === undefined) && (c.content || c.text)) || conversation[0];
+      message = (userConv && (userConv.content || userConv.text || '')).trim();
+    }
 
     if (!message || typeof message !== 'string') {
-      return res.status(400).json({ error: 'Missing or invalid message field' });
+      return res.status(400).json({ error: 'Missing or invalid message field', reply: '' });
     }
 
     // === Hermes System Prompt (plain text only) ===

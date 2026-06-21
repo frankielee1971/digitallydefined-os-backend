@@ -6,8 +6,9 @@
     "strict": false,
     "esModuleInterop": true,
     "skipLibCheck": true,
+    "allowJs": true,
     "lib": ["ES2020", "DOM"],
     "types": ["node"]
   },
-  "include": ["api/**/*", "lib/firebaseAdmin.ts", "lib/antigravity/_utils/googleAuth.ts"]
+  "include": ["api/**/*", "middlewares.js"]
 }
