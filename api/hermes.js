@@ -33,6 +33,15 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
+  // === Health Check (Fixes dashboard + Sync Vault GET errors) ===
+  if (req.method === 'GET') {
+    return res.status(200).json({
+      ok: true,
+      status: 'Hermes backend is running',
+      timestamp: Date.now()
+    });
+  }
+
   // === Method Validation ===
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed - use POST', reply: '' });
@@ -91,20 +100,15 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Missing or invalid message field', reply: '' });
     }
 
-    // === Hermes System Prompt ===
-    const hermesSystemPrompt =
-      "You are Hermes, the DigitallyDefined business partner. RESPOND USING PLAIN TEXT ONLY. NO MARKDOWN. NO FORMATTING. NO BOLD. NO ITALICS. NO LISTS. NO BULLETS. NO NUMBERED LISTS. NO CODE BLOCKS. NO SYMBOLS. NO SPECIAL CHARACTERS. Use simple sentences with normal punctuation only. You help me grow the digital assets I already have. You evaluate my assets based on leverage, traffic potential, monetization potential, speed of execution, and long term compounding value. You help me choose which assets to build first so I can show Gen X women real proof.";
-
     // === Markdown Stripper ===
     const stripMarkdown = (text) => {
-      if (!text || typeof text !== 'string') return '';
+      if (!text) return '';
       return text
         .replace(/```[\s\S]*?```/g, '')
-        .replace(/\*\*\*[^\*]+\*\*\*/g, '')
-        .replace(/\*\*[^\*]+\*\*/g, '')
-        .replace(/\*[^\*]+\*/g, '')
-        .replace(/_[^_]+_/g, '')
         .replace(/`[^`]+`/g, '')
+        .replace(/\*\*([^*]+)\*\*/g, '$1')
+        .replace(/\*([^*]+)\*/g, '$1')
+        .replace(/_([^_]+)_/g, '$1')
         .replace(/^>\s*/gm, '')
         .replace(/^\s*[-*+]\s+/gm, '')
         .replace(/^\s*\d+\.\s+/gm, '')
@@ -112,6 +116,8 @@ export default async function handler(req, res) {
         .replace(/\s+/g, ' ')
         .trim();
     };
+
+    const hermesSystemPrompt = "You are Hermes, the DigitallyDefined business partner. RESPOND USING PLAIN TEXT ONLY. NO MARKDOWN. NO FORMATTING. NO BOLD. NO ITALICS. NO LISTS. NO BULLETS. NO NUMBERED LISTS. NO CODE BLOCKS. NO SYMBOLS. NO SPECIAL CHARACTERS. Use simple sentences with normal punctuation only. You help me grow the digital assets I already have. You evaluate my assets based on leverage, traffic potential, monetization potential, speed of execution, and long term compounding value. You help me choose which assets to build first so I can show Gen X women real proof. You understand that digital assets include websites, rank and rent sites, niche content sites, email lists, digital products, templates, content hubs, and automation systems. You help me decide which ones have the highest return with the least friction. You always think in terms of working smarter, not harder. You focus on leverage, automation, and compounding results. You help me build assets that grow over time and become examples for Gen X women who need to see what is possible. You understand that Gen X women trust results they can see. You help me build assets that become evidence, demonstrations, and case studies. You help me think in data, patterns, and strategy. You help me build digital real estate that supports me and also teaches other women how to do the same. IMPORTANT: Every word you output must be plain text. Never use markdown syntax under any circumstances.";
 
     // === Build messages array ===
     const systemMessage = {
@@ -231,7 +237,7 @@ export default async function handler(req, res) {
               'Authorization': `Bearer ${groqKey}`
             },
             body: JSON.stringify({
-              model: process.env.GROQ_MODEL || 'llama3-8b-8192',
+              model: process.env.GROQ_MODEL || 'llama3-70b-8192',
               stream: false,
               messages,
               temperature: 0.35,
@@ -247,8 +253,7 @@ export default async function handler(req, res) {
             reply = stripMarkdown(data?.choices?.[0]?.message?.content || '');
             if (reply) console.log('[Hermes] Groq succeeded');
           } else {
-            const errorText = await groqResponse.text();
-            lastError = `Groq error: ${groqResponse.status} - ${errorText.slice(0, 200)}`;
+            lastError = `Groq error: ${groqResponse.status}`;
           }
         } catch (err) {
           lastError = `Groq connection error: ${err?.message}`;
@@ -256,30 +261,16 @@ export default async function handler(req, res) {
       }
     }
 
-    // === Final Response ===
-    if (reply) {
-      return res.status(200).json({ success: true, reply });
-    }
-
-    if (!gatewayKey && !process.env.OPENROUTER_API_KEY && !process.env.GROQ_API_KEY) {
-      return res.status(200).json({
-        success: false,
-        reply: 'Hermes is ready but no AI model is configured. Please set VERCEL_AI_GATEWAY_API_KEY, OPENROUTER_API_KEY, or GROQ_API_KEY.'
-      });
-    }
-
-    return res.status(500).json({
-      success: false,
-      reply: 'All AI services are currently unavailable. Please try again shortly.',
-      detail: lastError || 'All AI providers returned errors'
+    return res.status(200).json({
+      reply: reply || '',
+      error: lastError || null
     });
-
-  } catch (error) {
-    console.error('[Hermes Backend] Unexpected error:', error);
+  } catch (err) {
+    console.error('[Hermes] Handler error:', err);
     return res.status(500).json({
       error: 'Internal server error',
-      reply: 'Hermes encountered an unexpected error. Please try again.',
-      detail: process.env.NODE_ENV !== 'production' ? error?.message : 'An internal error occurred'
+      reply: '',
+      detail: process.env.NODE_ENV !== 'production' ? err?.message : undefined
     });
   }
 }
