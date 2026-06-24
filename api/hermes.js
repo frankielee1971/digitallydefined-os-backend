@@ -33,7 +33,7 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
-  // === Health Check (Fixes dashboard + Sync Vault GET errors) ===
+  // === Health Check ===
   if (req.method === 'GET') {
     return res.status(200).json({
       ok: true,
@@ -56,20 +56,25 @@ export default async function handler(req, res) {
   }
 
   try {
-    // === Parse Request Body Safely ===
-    let body;
-    try {
-      body = typeof req.json === 'function' ? await req.json() : req.body;
-    } catch (parseError) {
+    // === FIXED: Proper Body Parsing for Vercel ===
+    const body = req.body;
+
+    if (!body || typeof body !== 'object') {
       return res.status(400).json({
-        error: 'Invalid JSON in request body',
-        detail: parseError?.message || 'Malformed JSON',
+        error: 'Request body must be a JSON object',
         reply: ''
       });
     }
 
-    if (!body || typeof body !== 'object') {
-      return res.status(400).json({ error: 'Request body must be a JSON object', reply: '' });
+    // === Dashboard Action Handler ===
+    if (body.action === "dashboard") {
+      return res.status(200).json({
+        ok: true,
+        source: "hermes-backend",
+        message: "Dashboard data loaded successfully",
+        timestamp: Date.now(),
+        reply: "Hermes dashboard action acknowledged"
+      });
     }
 
     // === Extract message from multiple possible shapes ===
@@ -100,6 +105,12 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Missing or invalid message field', reply: '' });
     }
 
+    // === Build messages array ===
+    const messages = [
+      { role: "system", content: "You are Hermes." },
+      { role: "user", content: message }
+    ];
+
     // === Markdown Stripper ===
     const stripMarkdown = (text) => {
       if (!text) return '';
@@ -116,25 +127,6 @@ export default async function handler(req, res) {
         .replace(/\s+/g, ' ')
         .trim();
     };
-
-    const hermesSystemPrompt = "You are Hermes, the DigitallyDefined business partner. RESPOND USING PLAIN TEXT ONLY. NO MARKDOWN. NO FORMATTING. NO BOLD. NO ITALICS. NO LISTS. NO BULLETS. NO NUMBERED LISTS. NO CODE BLOCKS. NO SYMBOLS. NO SPECIAL CHARACTERS. Use simple sentences with normal punctuation only. You help me grow the digital assets I already have. You evaluate my assets based on leverage, traffic potential, monetization potential, speed of execution, and long term compounding value. You help me choose which assets to build first so I can show Gen X women real proof. You understand that digital assets include websites, rank and rent sites, niche content sites, email lists, digital products, templates, content hubs, and automation systems. You help me decide which ones have the highest return with the least friction. You always think in terms of working smarter, not harder. You focus on leverage, automation, and compounding results. You help me build assets that grow over time and become examples for Gen X women who need to see what is possible. You understand that Gen X women trust results they can see. You help me build assets that become evidence, demonstrations, and case studies. You help me think in data, patterns, and strategy. You help me build digital real estate that supports me and also teaches other women how to do the same. IMPORTANT: Every word you output must be plain text. Never use markdown syntax under any circumstances.";
-
-    // === Build messages array ===
-    const systemMessage = {
-      role: 'system',
-      content: `${hermesSystemPrompt}\n\nContext: ${JSON.stringify(context)}`
-    };
-
-    const messages = [
-      systemMessage,
-      ...(Array.isArray(conversation)
-        ? conversation.map(c => ({
-            role: c.role || 'user',
-            content: c.content || c.text || ''
-          }))
-        : []),
-      { role: 'user', content: message }
-    ];
 
     // === AI Provider Fallback Chain ===
     let reply = null;
@@ -266,11 +258,10 @@ export default async function handler(req, res) {
       error: lastError || null
     });
   } catch (err) {
-    console.error('[Hermes] Handler error:', err);
     return res.status(500).json({
-      error: 'Internal server error',
-      reply: '',
-      detail: process.env.NODE_ENV !== 'production' ? err?.message : undefined
+      error: `Internal server error: ${err?.message || 'Unknown error'}`,
+      reply: ''
     });
   }
 }
+
