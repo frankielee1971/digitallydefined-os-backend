@@ -903,233 +903,45 @@ export default async function handler(req, res) {
       });
     }
 
-    if (action === 'hermes') {
-      // Hermes AI assistant endpoint - accepts dashboard snapshot and user message, returns AI reply
+        if (action === 'hermes') {
       if (!checkDashboardApiKey(req)) {
         return res.status(401).json({ error: 'Unauthorized' });
       }
 
+      // Normalize payload and delegate to /api/hermes canonical handler
+      const snapshot = typeof req.body === 'object' && req.body !== null ? req.body : {};
+      const context = snapshot.context || snapshot.dashboard || snapshot.snapshot || null;
+
+      // Forward to Hermes backend handler via internal fetch
       try {
-        const body = await req.json();
-        const message = body?.message;
-
-        if (!message || typeof message !== 'string') {
-          return res.status(400).json({ error: 'Missing or invalid message field' });
-        }
-
-        // Use Groq to generate a response
-        const groqApiKey = process.env.GROQ_API_KEY;
-        const model = (process.env.MODEL || 'llama-3.3-70b-versatile').trim();
-
-        if (!groqApiKey) {
-          // Fallback response if Groq is not configured
-          return res.status(200).json({
-            reply: 'Hermes is ready but AI model is not configured. Please set GROQ_API_KEY to enable AI responses.',
-          });
-        }
-
-        const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        const url = new URL(`${process.env.BACKEND_HERMES_URL || 'https://digitallydefined-os-backend-1.vercel.app/api/hermes'}`);
+        const resHermes = await fetch(url.toString(), {
           method: 'POST',
           headers: {
-            Authorization: `Bearer ${groqApiKey.trim()}`,
             'Content-Type': 'application/json',
+            'x-api-key': req.headers['x-api-key'] || '',
           },
           body: JSON.stringify({
-            model,
-            messages: [
-              {
-                role: "system",
-                content: "You are Hermes, the DigitallyDefined business partner. Respond using plain text only. No markdown, no formatting, no lists, no symbols. Use simple sentences. You help me grow the digital assets I already have. You evaluate my assets based on leverage, traffic potential, monetization potential, speed of execution, and long term compounding value. You help me choose which assets to build first so I can show Gen X women real proof. You understand that digital assets include websites, rank and rent sites, niche content sites, email lists, digital products, templates, content hubs, and automation systems. You help me decide which ones have the highest return with the least friction. You always think in terms of working smarter, not harder. You focus on leverage, automation, and compounding results. You help me build assets that grow over time and become examples for Gen X women who need to see what is possible. You understand that Gen X women trust results they can see. You help me build assets that become evidence, demonstrations, and case studies. You help me think in data, patterns, and strategy. You help me build digital real estate that supports me and also teaches other women how to do the same."
-              },
-              { role: 'user', content: message },
-            ],
-            temperature: 0.35,
-            max_tokens: 650,
+            context,
+            message: snapshot.message || snapshot.text || '',
+            conversation: snapshot.conversation || snapshot.messages || [],
           }),
         });
 
-        const data = await parseJsonSafe(res, {});
+        const data = await parseJsonSafe(resHermes, { reply: '', error: 'Hermes backend error' });
 
-        if (!res.ok) {
-          const errorMsg = data?.error?.message || 'Groq API error';
-          console.error('[Hermes] Groq API error:', errorMsg);
-          return res.status(500).json({
-            error: 'AI service error',
-            reply: 'Sorry, I encountered an error processing your request. Please try again.',
-          });
-        }
-
-        const reply = data?.choices?.[0]?.message?.content || 'I could not generate a response.';
-
-        return res.status(200).json({ reply });
+        return res.status(resHermes.status).json(data);
       } catch (err) {
-        console.error('[Hermes] Error:', err);
         return res.status(500).json({
-          error: 'Hermes request failed',
-          reply: 'Sorry, I encountered an error. Please try again.',
+          error: 'Hermes delegation failed',
+          details: process.env.NODE_ENV !== 'production' ? err.message : undefined,
         });
       }
     }
-
-    if (action === 'automation.events') {
-      return res.status(200).json({
-        status: 'success',
-        events: [{ id: 'evt-001', type: 'sync', timestamp: Date.now() }],
-      });
-    }
-
-    if (action === 'sheets') {
-      if (!checkDashboardApiKey(req)) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-
-      const sheetsUrl = process.env.SHEETS_WEBHOOK_URL;
-      if (!sheetsUrl) {
-        return res.status(500).json({ error: 'Sheets webhook URL not configured' });
-      }
-
-      try {
-        const url = new URL(sheetsUrl);
-        url.searchParams.set('action', 'dashboard');
-        url.searchParams.set('t', String(Date.now()));
-
-        const response = await fetch(url.toString(), {
-          headers: { 'Cache-Control': 'no-store' },
-        });
-
-        if (!response.ok) {
-          throw new Error(`Sheets returned ${response.status}`);
-        }
-
-        const data = await parseJsonSafe(response, {});
-        return res.status(200).json(data);
-      } catch (error) {
-        console.error('Sheets proxy error:', error);
-        return res.status(500).json({
-          error: 'Sheets fetch failed',
-          details: process.env.NODE_ENV !== 'production' ? error.message : 'An internal error occurred.',
-        });
-      }
-    }
-
-    if (action === 'dashboard') {
-      if (!checkDashboardApiKey(req)) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-
-      const [fbData, brevoData, sheetsResult, notionResult] = await Promise.all([
-        fetchFacebookGroup(),
-        fetchBrevoStats(),
-        fetchSheetsData(),
-        fetchNotionData(),
-      ]);
-
-      const spData = brevoData;
-      const sheetsData = sheetsResult.data;
-      const notionData = notionResult.data;
-
-      const communityCount = safeNumber(fbData?.member_count, safeNumber(sheetsData?.communityCount, 0));
-      const revenueNumber = safeNumber(sheetsData?.revenue, NaN);
-      const revenue = Number.isFinite(revenueNumber)
-        ? formatUSD(revenueNumber)
-        : safeString(sheetsData?.revenue, '$0');
-
-      const leads = safeNumber(sheetsData?.leads, 0);
-      const topAsset = safeString(sheetsData?.topAsset, 'N/A');
-      const assetValue = safeString(sheetsData?.assetValue, '$0');
-
-      const rawSiteHealth = sheetsData?.siteHealth;
-      const siteHealth = typeof rawSiteHealth === 'number'
-        ? rawSiteHealth <= 1
-          ? `${Math.round(rawSiteHealth * 100)}%`
-          : `${Math.round(rawSiteHealth)}%`
-        : safeString(rawSiteHealth, '100%');
-
-      const sentiment = safeString(sheetsData?.sentiment, 'Positive');
-      const communityGrowth = safeString(sheetsData?.communityGrowth, '0%');
-      const emailGrowth = safeString(sheetsData?.emailGrowth, '0%');
-      const conversionRate = safeString(sheetsData?.conversionRate, '0%');
-      const churnRisk = safeString(sheetsData?.churnRisk, 'Low');
-
-      const aiBrief = await fetchAIBrief({
-        communityCount,
-        emailSubscribers: spData.totalSubscribers,
-        emailOpenRate: spData.emailOpenRate,
-        emailClickRate: spData.emailClickRate,
-        revenue,
-        communityGrowth,
-      });
-
-      const alerts = buildAlerts({
-        facebookError: fbData?.error,
-        emailError: spData?.error,
-        sheetsError: sheetsResult?.error,
-        notionError: notionResult?.error,
-        groqSet: !!process.env.GROQ_API_KEY,
-        aiError: aiBrief?.error,
-        facebookEnvSet: !!(process.env.FACEBOOK_GROUP_ID && process.env.FACEBOOK_ACCESS_TOKEN),
-      });
-
-      const community = Array.isArray(sheetsData?.community) ? sheetsData.community : [];
-      const assets = Array.isArray(sheetsData?.assets) ? sheetsData.assets : [];
-      const email = sheetsData?.email && typeof sheetsData.email === 'object' ? sheetsData.email : {};
-      const topPosts = Array.isArray(sheetsData?.topPosts) ? sheetsData.topPosts : [];
-      const campaigns = Array.isArray(sheetsData?.campaigns) && sheetsData.campaigns.length > 0
-        ? sheetsData.campaigns
-        : spData.topCampaigns;
-
-      const debug = process.env.NODE_ENV !== 'production'
-        ? {
-            facebook: fbData?.debug || null,
-            brevo: spData?.debug || null,
-            sheets: sheetsResult?.debug || null,
-            notion: notionResult?.debug || null,
-            groq: aiBrief?.debug || null,
-          }
-        : undefined;
-
-      return res.status(200).json({
-        status: 'ok',
-        community,
-        assets,
-        email,
-        topPosts,
-        campaigns,
-        notion: notionData,
-        metrics: {
-          communityCount,
-          communityGrowth,
-          emailSubscribers: spData.totalSubscribers,
-          emailGrowth,
-          emailOpenRate: spData.emailOpenRate,
-          emailClickRate: spData.emailClickRate,
-          conversionRate,
-          churnRisk,
-          revenue,
-          leads,
-          topAsset,
-          assetValue,
-          siteHealth,
-          sentiment,
-        },
-        aiBrief: {
-          working: aiBrief.working,
-          slipping: aiBrief.slipping,
-          nextActions: aiBrief.nextActions,
-        },
-        alerts,
-        ...(debug ? { debug } : {}),
-      });
-    }
-
-    return res.status(404).json({ error: `Unknown action: ${action}` });
   } catch (err) {
-    console.error('Dashboard error:', err);
     return res.status(500).json({
-      error: 'Dashboard fetch failed',
-      details: process.env.NODE_ENV !== 'production'
-        ? err?.message || 'Unknown error'
-        : 'An internal error occurred.',
+      error: 'Internal server error',
+      details: process.env.NODE_ENV !== 'production' ? err.message : undefined,
     });
   }
 }
