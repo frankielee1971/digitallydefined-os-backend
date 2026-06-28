@@ -59,24 +59,32 @@ export default async function handler(req, res) {
     // === Body Parsing ===
     let body = {};
 
+    const contentType = String(req.headers['content-type'] || '').toLowerCase();
+
     if (typeof req.body === 'string') {
       try {
         body = JSON.parse(req.body);
-      } catch {
-        body = {};
+      } catch (parseError) {
+        return res.status(400).json({
+          error: 'Invalid JSON body: ' + (parseError instanceof Error ? parseError.message : String(parseError)),
+          reply: '',
+        });
       }
-    } else if (typeof req.body === 'object' && req.body !== null) {
+    } else if (req.body && typeof req.body === 'object') {
       body = req.body;
+    } else if (!req.body && (contentType.includes('application/json') || contentType.includes('text/json'))) {
+      return res.status(400).json({
+        error: 'Missing request body. Expected JSON with message, messages, or conversation field.',
+        reply: '',
+      });
     }
 
-    if (!body || typeof body !== 'object') {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
       return res.status(400).json({
         error: 'Request body must be a JSON object',
         reply: '',
       });
     }
-
-    // === Dashboard Action Shortcut ===
     if (body.action === 'dashboard') {
       return res.status(200).json({
         ok: true,
