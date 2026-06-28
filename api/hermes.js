@@ -1,10 +1,6 @@
 /**
  * Hermes Backend Handler
- * Hybrid provider chain:
- * 1. Vercel AI Gateway
- * 2. OpenRouter
- * 3. Groq
- * Returns plain text + metadata for the dashboard.
+ * Hybrid provider chain with safe JSON fallbacks.
  */
 
 export default async function handler(req, res) {
@@ -159,53 +155,14 @@ export default async function handler(req, res) {
     let model = null;
     let lastError = null;
 
-    // === 1) Vercel AI Gateway ===
-    try {
-      const vercelKey = process.env.VERCEL_AI_API_KEY;
-      const vercelModel = (process.env.HERMES_MODEL || '').trim();
-
-      if (vercelKey && vercelModel) {
-        const resVercel = await fetch('https://api.vercel.ai/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${vercelKey.trim()}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: vercelModel,
-            messages,
-          }),
-        });
-
-        if (!resVercel.ok) {
-          const text = await resVercel.text();
-          throw new Error(`Vercel AI Gateway error: ${resVercel.status} ${resVercel.statusText}${text ? ` - ${text.slice(0, 200)}` : ''}`);
-        }
-
-        const contentType = resVercel.headers.get('content-type') || '';
-        if (!contentType.includes('application/json')) {
-          const text = await resVercel.text();
-          throw new Error(`Vercel AI Gateway returned non-JSON response: ${text.slice(0, 200)}`);
-        }
-
-        const data = await resVercel.json();
-        const raw = data?.choices?.[0]?.message?.content || '';
-        reply = stripMarkdown(raw);
-        provider = 'vercel';
-        model = vercelModel;
-      }
-    } catch (e) {
-      lastError = e.message || 'Vercel AI Gateway failed';
-    }
-
-    // === 2) OpenRouter (if no reply yet) ===
+    // === 1) OpenRouter (primary) ===
     if (!reply) {
       try {
         const orKey = process.env.OPENROUTER_API_KEY;
         const orModel = (process.env.OPENROUTER_MODEL || '').trim();
 
         if (orKey && orModel) {
-          const resOR = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',
             headers: {
               Authorization: `Bearer ${orKey.trim()}`,
@@ -217,18 +174,18 @@ export default async function handler(req, res) {
             }),
           });
 
-          if (!resOR.ok) {
-            const text = await resOR.text();
-            throw new Error(`OpenRouter error: ${resOR.status} ${resOR.statusText}${text ? ` - ${text.slice(0, 200)}` : ''}`);
+          if (!res.ok) {
+            const text = await res.text();
+            throw new Error(`OpenRouter error: ${res.status} ${res.statusText}${text ? ` - ${text.slice(0, 200)}` : ''}`);
           }
 
-          const contentTypeRes = resOR.headers.get('content-type') || '';
+          const contentTypeRes = res.headers.get('content-type') || '';
           if (!contentTypeRes.includes('application/json')) {
-            const text = await resOR.text();
+            const text = await res.text();
             throw new Error(`OpenRouter returned non-JSON response: ${text.slice(0, 200)}`);
           }
 
-          const data = await resOR.json();
+          const data = await res.json();
           const raw = data?.choices?.[0]?.message?.content || '';
           reply = stripMarkdown(raw);
           provider = 'openrouter';
@@ -239,14 +196,14 @@ export default async function handler(req, res) {
       }
     }
 
-    // === 3) Groq (fallback) ===
+    // === 2) Groq (fallback) ===
     if (!reply) {
       try {
         const groqKey = process.env.GROQ_API_KEY;
         const groqModel = (process.env.GROQ_MODEL || '').trim();
 
         if (groqKey && groqModel) {
-          const resGroq = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
             method: 'POST',
             headers: {
               Authorization: `Bearer ${groqKey.trim()}`,
@@ -258,18 +215,18 @@ export default async function handler(req, res) {
             }),
           });
 
-          if (!resGroq.ok) {
-            const text = await resGroq.text();
-            throw new Error(`Groq error: ${resGroq.status} ${resGroq.statusText}${text ? ` - ${text.slice(0, 200)}` : ''}`);
+          if (!res.ok) {
+            const text = await res.text();
+            throw new Error(`Groq error: ${res.status} ${res.statusText}${text ? ` - ${text.slice(0, 200)}` : ''}`);
           }
 
-          const contentType = resGroq.headers.get('content-type') || '';
+          const contentType = res.headers.get('content-type') || '';
           if (!contentType.includes('application/json')) {
-            const text = await resGroq.text();
+            const text = await res.text();
             throw new Error(`Groq returned non-JSON response: ${text.slice(0, 200)}`);
           }
 
-          const data = await resGroq.json();
+          const data = await res.json();
           const raw = data?.choices?.[0]?.message?.content || '';
           reply = stripMarkdown(raw);
           provider = 'groq';
@@ -280,12 +237,56 @@ export default async function handler(req, res) {
       }
     }
 
+    // === 3) Vercel AI Gateway (last resort) ===
+    if (!reply) {
+      try {
+        const vercelKey = process.env.VERCEL_AI_API_KEY;
+        const vercelModel = (process.env.HERMES_MODEL || '').trim();
+
+        if (vercelKey && vercelModel) {
+          const res = await fetch('https://api.vercel.ai/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${vercelKey.trim()}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model: vercelModel,
+              messages,
+            }),
+          });
+
+          const contentType = res.headers.get('content-type') || '';
+          const text = await res.text();
+
+          let jsonData = null;
+          if (contentType.includes('application/json')) {
+            try { jsonData = JSON.parse(text); } catch { jsonData = null; }
+          }
+
+          if (!res.ok || !jsonData) {
+            const reason = !res.ok
+              ? `Vercel AI Gateway error: ${res.status} ${res.statusText}`
+              : 'Vercel AI Gateway returned invalid JSON';
+            const snippet = (text || '').slice(0, 200);
+            throw new Error(`${reason}${snippet ? ` - ${snippet}` : ''}`);
+          }
+
+          const raw = jsonData?.choices?.[0]?.message?.content || '';
+          reply = stripMarkdown(raw);
+          provider = 'vercel';
+          model = vercelModel;
+        }
+      } catch (e) {
+        lastError = e.message || lastError || 'Vercel failed';
+      }
+    }
+
     if (!reply) {
       reply = lastError
         ? `Hermes provider failed: ${lastError}`
-        : 'Hermes could not reach any AI provider. Check backend env keys for Vercel, OpenRouter, or Groq.';
+        : 'Hermes could not reach any AI provider. Check backend env keys for OpenRouter, Groq, or Vercel.';
     }
-
 
     return res.status(200).json({
       reply,
