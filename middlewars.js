@@ -23,7 +23,7 @@ export function middleware(request) {
   }
 
   response.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  response.headers.set('Access-Control-Allow-Headers', 'Content-Type, x-api-key');
+  response.headers.set('Access-Control-Allow-Headers', 'Content-Type, x-api-key, Authorization');
   response.headers.set('Access-Control-Allow-Credentials', 'true');
 
   return response;
