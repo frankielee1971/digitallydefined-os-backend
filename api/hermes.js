@@ -162,7 +162,7 @@ export default async function handler(req, res) {
     // === 1) Vercel AI Gateway ===
     try {
       const vercelKey = process.env.VERCEL_AI_API_KEY;
-      const vercelModel = (process.env.VERCEL_AI_MODEL || '').trim();
+      const vercelModel = (process.env.HERMES_MODEL || '').trim();
 
       if (vercelKey && vercelModel) {
         const resVercel = await fetch('https://api.vercel.ai/v1/chat/completions', {
