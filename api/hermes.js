@@ -239,50 +239,6 @@ export default async function handler(req, res) {
 
     // === 3) Vercel AI Gateway (last resort) ===
     if (!reply) {
-      try {
-        const vercelKey = process.env.VERCEL_AI_API_KEY;
-        const vercelModel = (process.env.HERMES_MODEL || '').trim();
-
-        if (vercelKey && vercelModel) {
-          const res = await fetch('https://api.vercel.ai/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${vercelKey.trim()}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              model: vercelModel,
-              messages,
-            }),
-          });
-
-          const contentType = res.headers.get('content-type') || '';
-          const text = await res.text();
-
-          let jsonData = null;
-          if (contentType.includes('application/json')) {
-            try { jsonData = JSON.parse(text); } catch { jsonData = null; }
-          }
-
-          if (!res.ok || !jsonData) {
-            const reason = !res.ok
-              ? `Vercel AI Gateway error: ${res.status} ${res.statusText}`
-              : 'Vercel AI Gateway returned invalid JSON';
-            const snippet = (text || '').slice(0, 200);
-            throw new Error(`${reason}${snippet ? ` - ${snippet}` : ''}`);
-          }
-
-          const raw = jsonData?.choices?.[0]?.message?.content || '';
-          reply = stripMarkdown(raw);
-          provider = 'vercel';
-          model = vercelModel;
-        }
-      } catch (e) {
-        lastError = e.message || lastError || 'Vercel failed';
-      }
-    }
-
-    if (!reply) {
       reply = lastError
         ? `Hermes provider failed: ${lastError}`
         : 'Hermes could not reach any AI provider. Check backend env keys for OpenRouter, Groq, or Vercel.';
