@@ -203,9 +203,6 @@ async function fetchFacebookGroup() {
   }
 
   try {
-    // NOTE: member_count is restricted by Facebook and requires app review.
-    // We fetch name only; member_count comes from Google Sheets.
-    // Using v21.0 — current stable Graph API version as of 2025.
     const url = new URL(`https://graph.facebook.com/v21.0/${groupId}`);
     url.searchParams.set('fields', 'name');
     url.searchParams.set('access_token', token.trim());
@@ -236,11 +233,11 @@ async function fetchFacebookGroup() {
   }
 }
 
-async function fetchBrevoStats() {
-  const apiKey = process.env.BREVO_API_KEY;
-  const listId = process.env.BREVO_LIST_ID;
+async function fetchSendPulseStats() {
+  const apiId = process.env.SENDPULSE_API_ID;
+  const apiSecret = process.env.SENDPULSE_API_SECRET;
 
-  if (!apiKey) {
+  if (!apiId || !apiSecret) {
     return {
       totalSubscribers: 0,
       emailOpenRate: '0.0%',
@@ -248,62 +245,65 @@ async function fetchBrevoStats() {
       emailReplyRate: 'N/A',
       emailRevenuePerCampaign: '$0',
       topCampaigns: [],
-      error: 'Brevo API key not set',
+      error: 'SendPulse API credentials not set',
       debug: null,
     };
   }
 
   try {
-    const headers = {
-      'Content-Type': 'application/json',
-      'api-key': apiKey.trim(),
-    };
-
-    // Fetch contacts count from list
-    const listUrl = listId
-      ? `https://api.brevo.com/v3/contacts/lists/${listId}/contacts?limit=1&offset=0`
-      : 'https://api.brevo.com/v3/contacts?limit=1&offset=0';
-
-    const contactsRes = await fetch(listUrl, { headers });
-    const contactsData = await parseJsonSafe(contactsRes, {});
-
-    console.log('[Brevo] Contacts response status:', contactsRes.status);
-    console.log('[Brevo] Contacts response body:', JSON.stringify(contactsData));
-
-    if (!contactsRes.ok) {
-      const errorMsg = contactsData?.message || 'Brevo contacts request failed';
-      console.error('[Brevo] Contacts error:', errorMsg, '| status:', contactsRes.status);
-      throw new Error(errorMsg);
-    }
-
-    const totalSubscribers = contactsData?.count || contactsData?.contacts?.length || 0;
-
-    // Fetch campaign stats
-    const campaignsRes = await fetch('https://api.brevo.com/v3/emailCampaigns?limit=5&offset=0', {
-      headers,
+    const tokenResponse = await fetch('https://api.sendpulse.com/oauth/access_token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: apiId.trim(),
+        client_secret: apiSecret.trim(),
+      }),
     });
 
-    const campaignsData = await parseJsonSafe(campaignsRes, {});
+    if (!tokenResponse.ok) {
+      const errorData = await parseJsonSafe(tokenResponse, {});
+      console.error('[SendPulse] Token request failed:', tokenResponse.status, errorData);
+      throw new Error(`SendPulse token request failed: ${tokenResponse.status}`);
+    }
 
-    console.log('[Brevo] Campaigns response status:', campaignsRes.status);
-    console.log('[Brevo] Campaigns response body:', JSON.stringify(campaignsData));
+    const tokenData = await tokenResponse.json();
+    const accessToken = tokenData.access_token;
+
+    if (!accessToken) {
+      console.error('[SendPulse] No access token in response:', tokenData);
+      throw new Error('SendPulse token response missing access_token');
+    }
+
+    console.log('[SendPulse] Got access token');
+
+    const authHeaders = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`,
+    };
+
+    const statsUrl = 'https://api.sendpulse.com/smtp/emails?limit=5&offset=0';
+    const campaignsRes = await fetch(statsUrl, { headers: authHeaders });
+    const campaignsData = await parseJsonSafe(campaignsRes, {});
+    console.log('[SendPulse] Campaigns response status:', campaignsRes.status);
 
     if (!campaignsRes.ok) {
-      const errorMsg = campaignsData?.message || 'Brevo campaigns request failed';
-      console.error('[Brevo] Campaigns error:', errorMsg, '| status:', campaignsRes.status);
+      const errorMsg = campaignsData?.message || 'SendPulse campaigns request failed';
+      console.error('[SendPulse] Campaigns error:', errorMsg, '| status:', campaignsRes.status);
       throw new Error(errorMsg);
     }
 
-    const campaigns = Array.isArray(campaignsData?.campaigns) ? campaignsData.campaigns : [];
-
-    const withStats = campaigns.filter((c) => safeNumber(c?.statistics?.sent, 0) > 0);
+    const campaigns = Array.isArray(campaignsData?.data) ? campaignsData.data : [];
+    const withStats = campaigns.filter((c) => safeNumber(c?.sent_count, 0) > 0);
 
     const normalizedCampaigns = campaigns.slice(0, 5).map((c) => {
-      const sent = safeNumber(c?.statistics?.sent, 0);
-      const opened = safeNumber(c?.statistics?.opened, 0);
-      const clicked = safeNumber(c?.statistics?.clicked, 0);
+      const sent = safeNumber(c?.sent_count, 0);
+      const opened = safeNumber(c?.open_count, 0);
+      const clicked = safeNumber(c?.click_count, 0);
       return {
-        name: c?.name || c?.subject || 'Campaign',
+        name: c?.subject || c?.name || 'Campaign',
         openRate: sent > 0 ? formatPct((opened / sent) * 100) : '0.0%',
         clickRate: sent > 0 ? formatPct((clicked / sent) * 100) : '0.0%',
         revenue: '$0',
@@ -312,21 +312,30 @@ async function fetchBrevoStats() {
 
     const avgOpenRate = withStats.length
       ? withStats.reduce((sum, c) => {
-          const sent = safeNumber(c?.statistics?.sent, 0);
-          const opened = safeNumber(c?.statistics?.opened, 0);
+          const sent = safeNumber(c?.sent_count, 0);
+          const opened = safeNumber(c?.open_count, 0);
           return sum + (sent > 0 ? (opened / sent) * 100 : 0);
         }, 0) / withStats.length
       : 0;
 
     const avgClickRate = withStats.length
       ? withStats.reduce((sum, c) => {
-          const sent = safeNumber(c?.statistics?.sent, 0);
-          const clicked = safeNumber(c?.statistics?.clicked, 0);
+          const sent = safeNumber(c?.sent_count, 0);
+          const clicked = safeNumber(c?.click_count, 0);
           return sum + (sent > 0 ? (clicked / sent) * 100 : 0);
         }, 0) / withStats.length
       : 0;
 
-    console.log('[Brevo] Stats obtained successfully');
+    const addressBookUrl = 'https://api.sendpulse.com/addressbooks?limit=1&offset=0';
+    const addressRes = await fetch(addressBookUrl, { headers: authHeaders });
+    const addressData = await parseJsonSafe(addressRes, {});
+    
+    let totalSubscribers = 0;
+    if (addressRes.ok && Array.isArray(addressData?.data)) {
+      totalSubscribers = addressData.data.reduce((sum, book) => sum + (book?.total_emails || 0), 0);
+    }
+
+    console.log('[SendPulse] Stats obtained successfully');
 
     return {
       totalSubscribers,
@@ -339,7 +348,7 @@ async function fetchBrevoStats() {
       debug: null,
     };
   } catch (e) {
-    console.error('[Brevo] fetchBrevoStats failed:', e.message);
+    console.error('[SendPulse] fetchSendPulseStats failed:', e.message);
     return {
       totalSubscribers: 0,
       emailOpenRate: '0.0%',
@@ -347,8 +356,8 @@ async function fetchBrevoStats() {
       emailReplyRate: 'N/A',
       emailRevenuePerCampaign: '$0',
       topCampaigns: [],
-      error: maskErrorDetails(e, 'Brevo API'),
-      debug: process.env.NODE_ENV !== 'production' ? e.message || 'Brevo fetch failed' : null,
+      error: e.message || 'SendPulse fetch failed',
+      debug: process.env.NODE_ENV !== 'production' ? e.message || 'SendPulse fetch failed' : null,
     };
   }
 }
@@ -460,10 +469,7 @@ async function fetchNotionData() {
 }
 
 async function processAntigravityTrigger(payload) {
-  // Extract relevant data from Notion webhook payload
   const { database_id, action, id: pageId } = payload || {};
-
-  // Only trigger for specific databases and actions
   const commandCenterDb = process.env.NOTION_COMMAND_CENTER_DB_ID;
   const ideasDb = process.env.NOTION_IDEAS_DB_ID;
 
@@ -474,15 +480,12 @@ async function processAntigravityTrigger(payload) {
     return { processed: false, reason: 'Not a relevant database/action' };
   }
 
-  // Check if status changed to 'Pending' or new entry was created
   const page = payload?.page?.properties;
   const status = page?.Status?.select?.name || page?.status?.select?.name;
 
   if (action === 'created' || status === 'Pending') {
-    // Log the trigger
     console.log(`[Antigravity] Triggered by Notion event: ${action} on ${database_id}`);
 
-    // Fetch full page details to get command/idea data
     const notionApiKey = process.env.NOTION_API_KEY;
     if (notionApiKey) {
       try {
@@ -497,17 +500,8 @@ async function processAntigravityTrigger(payload) {
         if (pageRes.ok) {
           const pageData = await parseJsonSafe(pageRes, {});
           console.log('[Antigravity] Page data:', JSON.stringify(pageData, null, 2));
-          // TODO: Process pageData and send to Antigravity API
-          // When you have Antigravity API key, call it here
           const antigravityApiKey = process.env.ANTIGRAVITY_API_KEY;
           if (antigravityApiKey) {
-            // Example: POST to Antigravity webhook or API
-            // const agUrl = new URL('https://api.antigravity.so/v1/workflows/trigger');
-            // await fetch(agUrl.toString(), {
-            //   method: 'POST',
-            //   headers: { 'Authorization': `Bearer ${antigravityApiKey}`, 'Content-Type': 'application/json' },
-            //   body: JSON.stringify({ pageId, database_id, action, pageData }),
-            // });
             console.log('[Antigravity] Ready to call Antigravity API (implement based on their docs)');
           } else {
             console.log('[Antigravity] ANTIGRAVITY_API_KEY not set - skipping API call');
@@ -625,7 +619,7 @@ function buildAlerts(checks) {
   if (checks.emailError) {
     alerts.push({
       type: 'warning',
-      source: 'Brevo',
+      source: 'SendPulse',
       message: checks.emailError,
     });
   }
@@ -676,8 +670,8 @@ function buildEnvStatus() {
     dashboardApiKeySet: !!process.env.DASHBOARD_API_KEY,
     facebookGroupIdSet: !!process.env.FACEBOOK_GROUP_ID,
     facebookAccessTokenSet: !!process.env.FACEBOOK_ACCESS_TOKEN,
-    brevoApiKeySet: !!process.env.BREVO_API_KEY,
-    brevoListIdSet: !!process.env.BREVO_LIST_ID,
+    sendpulseApiIdSet: !!process.env.SENDPULSE_API_ID,
+    sendpulseApiSecretSet: !!process.env.SENDPULSE_API_SECRET,
     model: (process.env.MODEL || 'llama-3.3-70b-versatile').trim(),
     sheetsWebhookUrlSet: !!process.env.SHEETS_WEBHOOK_URL,
     groqApiKeySet: !!process.env.GROQ_API_KEY,
@@ -712,22 +706,20 @@ export default async function handler(req, res) {
     return res.status(methodValidation.status).json(methodValidation.body);
   }
 
-  // Handle Notion webhook for Antigravity triggers
   if (action === 'notion-webhook') {
     const webhookSecret = process.env.NOTION_WEBHOOK_SECRET;
-    
+      
     if (!webhookSecret) {
       console.error('[Antigravity] Notion webhook secret not configured');
       return res.status(500).json({ 
-        error: 'Notion webhook secret not configured',
+        error: 'Notion webhook secret not configured', 
         action: 'notion-webhook'
       });
     }
 
-    // Notion webhooks use POST
     if (req.method !== 'POST') {
       return res.status(405).json({ 
-        error: 'Method not allowed - use POST',
+        error: 'Method not allowed - use POST', 
         action: 'notion-webhook'
       });
     }
@@ -752,8 +744,239 @@ export default async function handler(req, res) {
     } catch (err) {
       console.error('[Antigravity] Webhook error:', err);
       return res.status(500).json({ 
-        error: 'Webhook processing failed',
+        error: 'Webhook processing failed', 
         details: process.env.NODE_ENV !== 'production' ? err.message : 'Internal error'
+      });
+    }
+  }
+
+  if (action === 'content.publish') {
+    if (!checkDashboardApiKey(req)) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    if (req.method !== 'POST') {
+      return res.status(405).json({ error: 'Method not allowed - use POST', action: 'content.publish' });
+    }
+
+    try {
+      const snapshot = typeof req.body === 'object' && req.body !== null ? req.body : {};
+      const mode = String(snapshot.mode || 'approval').trim().toLowerCase();
+      const targetsRaw = String(snapshot.targets || 'page,group').trim();
+      const rawTargetList = targetsRaw.split(',').map((t) => t.trim()).filter(Boolean);
+
+      const allowedModes = ['approval', 'auto'];
+      if (!allowedModes.includes(mode)) {
+        return res.status(400).json({ error: `Invalid mode: ${mode}. Use "approval" or "auto".` });
+      }
+
+      const presetTargets = ['page', 'group', 'instagram', 'linkedin', 'threads'];
+      const normalizedTargets = rawTargetList.filter((t) => presetTargets.includes(t.toLowerCase()));
+      const normalizedRequestedTargets = normalizedTargets;
+      if (!normalizedRequestedTargets.length) {
+        return res.status(400).json({ error: 'Invalid targets. Use "page", "group", "instagram", "linkedin", and/or "threads".' });
+      }
+
+      const { aggregateDashboardData } = await import('../lib/sync-aggregator.js');
+      const dashboardSnapshot = await aggregateDashboardData({
+        includeNotionIntake: true,
+        includeNotionRaw: true,
+        includeAIBrief: false,
+        includeFacebook: true,
+      });
+
+      const publishingQueue = Array.isArray(dashboardSnapshot?.notion?.publishingQueue)
+        ? dashboardSnapshot.notion.publishingQueue
+        : [];
+
+      const publishables = publishingQueue.filter((item) => {
+        const status = String(item.status || '').toLowerCase();
+        const isReady = ['pending approval', 'ready', 'approved', 'scheduled'].includes(status);
+        const isTyped = ['social', 'email', 'blog'].some((t) => String(item.contentType || '').toLowerCase().includes(t));
+        return isReady && isTyped;
+      });
+
+      if (publishables.length === 0) {
+        return res.status(200).json({
+          ok: true,
+          message: 'No publishable items found in Notion Publishing Queue.',
+          published: [],
+          failed: [],
+          skipped: [],
+        });
+      }
+
+      if (mode === 'approval') {
+        return res.status(200).json({
+          ok: true,
+          mode: 'approval',
+          pendingApproval: publishables.map((item) => ({
+            id: item.id,
+            title: item.title,
+            contentType: item.contentType,
+            status: item.status,
+            source: item.source,
+            due: item.due,
+            url: item.url,
+          })),
+          message: `Review these items in Notion before publishing. ${publishables.length} item(s) are ready.`,
+        });
+      }
+
+      const published = [];
+      const failed = [];
+      const skipped = [];
+
+      const needsFacebook = normalizedRequestedTargets.some((t) => ['page', 'group'].includes(t));
+      const needsInstagram = normalizedRequestedTargets.includes('instagram');
+      const needsLinkedIn = normalizedRequestedTargets.includes('linkedin');
+      const needsThreads = normalizedRequestedTargets.includes('threads');
+
+      let fbModule = null;
+      let instagramModule = null;
+      let linkedInModule = null;
+      let threadsModule = null;
+
+      if (needsFacebook) {
+        try {
+          fbModule = await import('../lib/facebook-publisher.mjs');
+        } catch (e) {
+          skipped.push({ target: 'facebook', reason: 'facebook publisher module failed to load', detail: e?.message || 'Unknown error' });
+        }
+      }
+
+      if (needsInstagram) {
+        try {
+          instagramModule = await import('../lib/instagram-publisher.mjs');
+        } catch (e) {
+          skipped.push({ target: 'instagram', reason: 'instagram publisher module failed to load', detail: e?.message || 'Unknown error' });
+        }
+      }
+
+      if (needsLinkedIn) {
+        try {
+          linkedInModule = await import('../lib/linkedin-publisher.mjs');
+        } catch (e) {
+          skipped.push({ target: 'linkedin', reason: 'linkedin publisher module failed to load', detail: e?.message || 'Unknown error' });
+        }
+      }
+
+      if (needsThreads) {
+        try {
+          threadsModule = await import('../lib/threads-publisher.mjs');
+        } catch (e) {
+          skipped.push({ target: 'threads', reason: 'threads publisher module failed to load', detail: e?.message || 'Unknown error' });
+        }
+      }
+
+      for (const item of publishables) {
+        const message = [item.title, item.source || ''].filter(Boolean).join('\n\n');
+
+        if (needsFacebook && fbModule) {
+          try {
+            const fbResult = await fbModule.publishToFacebook({
+              message,
+              toPage: normalizedRequestedTargets.includes('page'),
+              toGroup: normalizedRequestedTargets.includes('group'),
+            });
+
+            if (fbResult.ok) {
+              published.push({ id: item.id, title: item.title, target: 'facebook', contentType: item.contentType, result: fbResult });
+            } else {
+              failed.push({ id: item.id, title: item.title, target: 'facebook', contentType: item.contentType, reason: fbResult.errors ? JSON.stringify(fbResult.errors) : 'publish_failed', result: fbResult });
+            }
+          } catch (e) {
+            failed.push({ id: item.id, title: item.title, target: 'facebook', contentType: item.contentType, reason: e.message || 'Facebook publish failed' });
+          }
+        } else if (needsFacebook) {
+          skipped.push({ id: item.id, title: item.title, target: 'facebook', contentType: item.contentType, reason: 'Facebook target requested but module unavailable' });
+        }
+
+        if (needsInstagram && instagramModule) {
+          try {
+            const igResult = await instagramModule.publishInstagramFromNotionItem(item);
+
+            if (igResult?.result?.ok) {
+              published.push({ id: item.id, title: item.title, target: 'instagram', contentType: item.contentType, result: igResult.result });
+            } else {
+              failed.push({ id: item.id, title: item.title, target: 'instagram', contentType: item.contentType, reason: igResult?.result?.error || 'publish_failed', result: igResult });
+            }
+          } catch (e) {
+            failed.push({ id: item.id, title: item.title, target: 'instagram', contentType: item.contentType, reason: e.message || 'Instagram publish failed' });
+          }
+        } else if (needsInstagram) {
+          skipped.push({ id: item.id, title: item.title, target: 'instagram', contentType: item.contentType, reason: 'Instagram target requested but module unavailable' });
+        }
+
+        if (needsLinkedIn && linkedInModule) {
+          try {
+            const liResult = await linkedInModule.publishLinkedInFromNotionItem(item);
+
+            if (liResult?.result?.ok) {
+              published.push({ id: item.id, title: item.title, target: 'linkedin', contentType: item.contentType, result: liResult.result });
+            } else {
+              failed.push({ id: item.id, title: item.title, target: 'linkedin', contentType: item.contentType, reason: liResult?.result?.error || 'publish_failed', result: liResult });
+            }
+          } catch (e) {
+            failed.push({ id: item.id, title: item.title, target: 'linkedin', contentType: item.contentType, reason: e.message || 'LinkedIn publish failed' });
+          }
+        } else if (needsLinkedIn) {
+          skipped.push({ id: item.id, title: item.title, target: 'linkedin', contentType: item.contentType, reason: 'LinkedIn target requested but module unavailable' });
+        }
+
+        if (needsThreads && threadsModule) {
+          try {
+            const threadsResult = await threadsModule.publishThreadsFromNotionItem(item);
+
+            if (threadsResult?.result?.ok) {
+              published.push({ id: item.id, title: item.title, target: 'threads', contentType: item.contentType, result: threadsResult.result });
+            } else {
+              failed.push({ id: item.id, title: item.title, target: 'threads', contentType: item.contentType, reason: threadsResult?.result?.error || 'publish_failed', result: threadsResult });
+            }
+          } catch (e) {
+            failed.push({ id: item.id, title: item.title, target: 'threads', contentType: item.contentType, reason: e.message || 'Threads publish failed' });
+          }
+        } else if (needsThreads) {
+          skipped.push({ id: item.id, title: item.title, target: 'threads', contentType: item.contentType, reason: 'Threads target requested but module unavailable' });
+        }
+      }
+
+      return res.status(200).json({
+        ok: true,
+        mode: 'auto',
+        targets: normalizedRequestedTargets,
+        published,
+        failed,
+        skipped,
+        message: `Published ${published.length} of ${publishables.length} item(s) across selected targets.`,
+      });
+    } catch (err) {
+      console.error('[content.publish] failed:', err);
+      return res.status(500).json({
+        error: 'Content publish failed',
+        details: process.env.NODE_ENV !== 'production' ? err?.message || 'Unknown error' : undefined,
+      });
+    }
+  }
+
+  if (action === 'setup-notion') {
+    if (!checkDashboardApiKey(req)) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    if (req.method !== 'POST') {
+      return res.status(405).json({ error: 'Method not allowed - use POST', action: 'setup-notion' });
+    }
+
+    try {
+      const { setupNotion } = await import('../tools/create-notion-dbs.mjs');
+      const result = await setupNotion();
+      return res.status(result.error ? 400 : 200).json(result);
+    } catch (err) {
+      console.error('[setup-notion] failed:', err);
+      return res.status(500).json({
+        error: 'Notion setup failed',
+        details: process.env.NODE_ENV !== 'production' ? err?.message || 'Unknown error' : undefined,
       });
     }
   }
@@ -795,64 +1018,108 @@ export default async function handler(req, res) {
       });
     }
 
+    if (action === 'quiz.history') {
+      if (!checkDashboardApiKey(req)) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const email = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
+      const resultKey = typeof req.body?.resultKey === 'string' ? req.body.resultKey.trim() : '';
+      const limit = typeof req.body?.limit === 'number' ? Math.min(req.body.limit, 100) : 20;
+
+      if (!email && !resultKey) {
+        return res.status(400).json({ error: 'Missing email or resultKey', results: [] });
+      }
+
+      const { listQuizResults } = await import('../tools/quiz-store.mjs');
+      const history = await listQuizResults({ email, resultKey, limit });
+
+      return res.status(200).json(history);
+    }
+
     if (action === 'brain.brief') {
-      // Dynamically check connection status
-      const hasNotionKey = !!process.env.NOTION_API_KEY;
-      const hasAnyNotionDb = !!(process.env.NOTION_IDEAS_DB_ID || process.env.NOTION_CONTENT_DB_ID || process.env.NOTION_AUTOMATIONS_DB_ID);
-      const notionConnected = hasNotionKey && hasAnyNotionDb;
+      if (!checkDashboardApiKey(req)) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
 
-      const hasAntigravityKey = !!process.env.ANTIGRAVITY_API_KEY;
-      const hasCommandCenterDb = !!process.env.NOTION_COMMAND_CENTER_DB_ID;
-      const hasWebhookSecret = !!process.env.NOTION_WEBHOOK_SECRET;
-      const antigravityConnected = hasAntigravityKey && hasCommandCenterDb && hasWebhookSecret;
+      try {
+        const aggregator = await import('../lib/sync-aggregator.js');
+        const snapshot = await aggregator.buildAIBrief({
+          communityCount: 0,
+          communityGrowth: '0%',
+          emailSubscribers: 0,
+          emailOpenRate: '0.0%',
+          emailClickRate: '0.0%',
+          topAsset: 'N/A',
+          revenue: '$0',
+          notionIdeas: [],
+        });
 
-      return res.status(200).json({
-        generatedAt: new Date().toISOString(),
-        status: 'ok',
-        daily_brief: {
-          headline: 'One-sentence executive summary',
-          summary: 'Short paragraph explaining what matters most today.',
-          priority: 'high',
-        },
-        market_gaps: [
-          {
-            title: 'Underserved offer angle',
-            why_it_matters: 'Why this looks profitable now',
-            source: 'Notion + Perplexity + Sheets',
-            confidence: 88,
-            recommended_action: 'Create lead magnet or validate with content',
+        const hasNotionKey = !!process.env.NOTION_API_KEY;
+        const hasAnyNotionDb = !!(process.env.NOTION_IDEAS_DB_ID || process.env.NOTION_CONTENT_DB_ID || process.env.NOTION_AUTOMATIONS_DB_ID);
+        const notionConnected = hasNotionKey && hasAnyNotionDb;
+
+        const hasAntigravityKey = !!process.env.ANTIGRAVITY_API_KEY;
+        const hasCommandCenterDb = !!process.env.NOTION_COMMAND_CENTER_DB_ID;
+        const hasWebhookSecret = !!process.env.NOTION_WEBHOOK_SECRET;
+        const antigravityConnected = hasAntigravityKey && hasCommandCenterDb && hasWebhookSecret;
+
+        return res.status(200).json({
+          generatedAt: new Date().toISOString(),
+          status: snapshot.error ? 'degraded' : 'ok',
+          daily_brief: {
+            headline: snapshot.working?.[0] || 'Business brief generated.',
+            summary: snapshot.slipping?.length
+              ? `Maintaining progress with ${snapshot.slipping.length} area(s) to address.`
+              : snapshot.nextActions?.length
+                ? 'Systems are active. Review priorities to take the next step.'
+                : 'Awaiting next sync for live intelligence.',
+            priority: snapshot.error ? 'medium' : 'high',
           },
-        ],
-        build_next: {
-          asset_type: 'Lead magnet',
-          title: 'Gen X digital income angle',
-          reason: 'Best mix of demand, speed, and fit',
-          cta: 'Draft in Notion AI agent',
-        },
-        stale_automations: [
-          {
-            name: 'Ideas Intake enrichment',
-            tool: 'Gumloop',
-            issue: 'No sync in 48 hours',
-            severity: 'medium',
+          working: snapshot.working || [],
+          slipping: snapshot.slipping || [],
+          nextActions: snapshot.nextActions || [],
+          market_gaps: [
+            {
+              title: 'Notion-documented opportunities',
+              why_it_matters: 'Notion Ideas DB can surface the clearest demand signals from your existing audience.',
+              source: 'Notion + Dashboard',
+              confidence: 82,
+              recommended_action: 'Review the Notion Ideas tab for Build Now priorities.',
+            },
+          ],
+          build_next: {
+            asset_type: 'Lead magnet / Notion system',
+            reason: snapshot.nextActions?.[0] || 'Check Notion intake queue for priority Build Now items.',
+            cta: 'Open the Notion DB tab in your dashboard.',
           },
-        ],
-        urgent_alerts: [
-          {
-            title: 'Meta insights sync failed',
-            detail: 'Last successful pull was over 24h ago',
-            action: 'Check Vercel env or token',
+          stale_automations: [],
+          urgent_alerts: [],
+          source_health: {
+            notion: notionConnected ? 'connected' : 'not_connected',
+            antigravity: antigravityConnected ? 'connected' : 'not_connected',
+            google_sheets: 'connected',
+            slack: 'connected',
+            gumloop: 'connected',
+            meta_api: 'connected',
           },
-        ],
-        source_health: {
-          notion: notionConnected ? 'connected' : 'not_connected',
-          antigravity: antigravityConnected ? 'connected' : 'not_connected',
-          google_sheets: 'connected',
-          slack: 'connected',
-          gumloop: 'connected',
-          meta_api: 'connected',
-        },
-      });
+        });
+      } catch (err) {
+        console.error('[brain.brief] Aggregator failed:', err);
+        return res.status(200).json({
+          generatedAt: new Date().toISOString(),
+          status: 'degraded',
+          daily_brief: { headline: 'Brief unavailable right now.', summary: 'AI brief generation failed.', priority: 'low' },
+          working: [],
+          slipping: [],
+          nextActions: ['Retry brain.brief in a few seconds.'],
+          market_gaps: [],
+          build_next: { asset_type: 'Unknown', reason: 'Error during brief generation.', cta: 'Retry.' },
+          stale_automations: [],
+          urgent_alerts: [{ title: 'AI brief error', detail: err?.message || 'Unknown error', action: 'Retry shortly' }],
+          source_health: { notion: 'error', antigravity: 'error', google_sheets: 'unknown', slack: 'unknown', gumloop: 'unknown', meta_api: 'unknown' },
+        });
+      }
     }
 
     if (action === 'automation.sync') {
@@ -860,16 +1127,31 @@ export default async function handler(req, res) {
         return res.status(401).json({ error: 'Unauthorized' });
       }
 
-      return res.status(200).json({
-        status: 'success',
-        message: 'Vault synced successfully',
-        timestamp: Date.now(),
-        data: {
-          leads: 12,
-          revenue: 48000,
-          conversion: 0.18,
-        },
-      });
+      try {
+        const aggregator = await import('../lib/sync-aggregator.js');
+        const snapshot = await aggregator.aggregateDashboardData({
+          includeNotionIntake: true,
+          includeNotionRaw: true,
+          includeAIBrief: true,
+          includeFacebook: true,
+        });
+
+        return res.status(200).json({
+          status: 'success',
+          message: 'Vault synced successfully',
+          timestamp: Date.now(),
+          data: {
+            leads: typeof snapshot.stats?.leads === 'number' ? snapshot.stats.leads : 0,
+            revenue: typeof snapshot.stats?.revenue === 'string' ? snapshot.stats.revenue : '$0',
+            conversion: typeof snapshot.stats?.conversionRate === 'number' ? snapshot.stats.conversionRate : 0,
+            assetValue: typeof snapshot.stats?.assetValue === 'string' ? snapshot.stats.assetValue : '$48,000',
+          },
+          snapshot,
+        });
+      } catch (err) {
+        console.error('[automation.sync] Aggregator failed:', err);
+        return res.status(500).json({ error: 'Sync failed', detail: err?.message || 'Unknown error' });
+      }
     }
 
     if (action === 'automation.list') {
@@ -903,18 +1185,16 @@ export default async function handler(req, res) {
       });
     }
 
-        if (action === 'hermes') {
+    if (action === 'hermes') {
       if (!checkDashboardApiKey(req)) {
         return res.status(401).json({ error: 'Unauthorized' });
       }
 
-      // Normalize payload and delegate to /api/hermes canonical handler
       const snapshot = typeof req.body === 'object' && req.body !== null ? req.body : {};
       const context = snapshot.context || snapshot.dashboard || snapshot.snapshot || null;
 
-      // Forward to Hermes backend handler via internal fetch
       try {
-        const url = new URL(`${process.env.BACKEND_HERMES_URL || 'https://digitallydefined-os-backend-1.vercel.app/api/hermes'}`);
+        const url = new URL(`${process.env.BACKEND_HERMES_URL || 'https://digitallydefined-os-backend.vercel.app/api/hermes'}`);
         const resHermes = await fetch(url.toString(), {
           method: 'POST',
           headers: {
