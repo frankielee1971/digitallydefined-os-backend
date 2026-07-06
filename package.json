@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "bootstrap": "node scripts/bootstrap.cjs"
   },
   "dependencies": {
     "@notionhq/client": "^2.3.0",

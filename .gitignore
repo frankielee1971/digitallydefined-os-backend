@@ -5,3 +5,4 @@ node_modules/
 desktop.ini
 digitallydefined-os-backend/
 .vercel
+.env*.local
