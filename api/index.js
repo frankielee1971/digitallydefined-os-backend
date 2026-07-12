@@ -22,6 +22,10 @@ const ALLOWED_ACTIONS = new Set([
   'notion-webhook',
   'test-env',
   'hermes',
+  'routes',
+  'brevo',
+  'community-triggers',
+  'social-publishers',
 ]);
 
 const GET_ONLY_ACTIONS = new Set([
@@ -35,6 +39,7 @@ const GET_ONLY_ACTIONS = new Set([
   'dashboard',
   'sheets',
   'test-env',
+  'routes',
 ]);
 
 const POST_ONLY_ACTIONS = new Set([
@@ -990,6 +995,45 @@ export default async function handler(req, res) {
       });
     }
 
+    if (action === 'routes') {
+      return res.status(200).json({
+        status: 'ok',
+        routes: [
+          { action: 'status', method: 'GET', scope: 'public', description: 'Health check' },
+          { action: 'auth.verify', method: 'GET', scope: 'dashboard', description: 'API key verification' },
+          { action: 'ai.recommendations', method: 'GET', scope: 'public', description: 'Static AI recommendations' },
+          { action: 'brain.brief', method: 'GET', scope: 'dashboard', description: 'AI business brief' },
+          { action: 'automation.sync', method: 'POST', scope: 'dashboard', description: 'Vault sync' },
+          { action: 'automation.list', method: 'GET', scope: 'public', description: 'List automations' },
+          { action: 'automation.logs', method: 'GET', scope: 'public', description: 'Automation logs' },
+          { action: 'automation.run', method: 'POST', scope: 'dashboard', description: 'Run automation command' },
+          { action: 'automation.events', method: 'GET', scope: 'public', description: 'Automation events' },
+          { action: 'dashboard', method: 'GET', scope: 'public', description: 'Dashboard data' },
+          { action: 'sheets', method: 'GET', scope: 'public', description: 'Sheets integration' },
+          { action: 'notion-webhook', method: 'POST', scope: 'internal', description: 'Notion webhook ingestion' },
+          { action: 'test-env', method: 'GET', scope: 'dashboard', description: 'Environment status' },
+          { action: 'hermes', method: 'POST', scope: 'dashboard', description: 'Hermes delegation' },
+          { action: 'sellable-products.publish', method: 'POST', scope: 'internal', description: 'Product publishing pipeline', handler: '/api/sellable-products' },
+          { action: 'seo-automation.run', method: 'POST', scope: 'internal', description: 'SEO automation pipeline', handler: '/api/seo-automation' },
+          { action: 'revenue-automation.run', method: 'POST', scope: 'internal', description: 'Revenue/pricing automation', handler: '/api/revenue-automation' },
+          { action: 'customer-operations.run', method: 'POST', scope: 'internal', description: 'Gumroad customer ops', handler: '/api/customer-operations' },
+          { action: 'gumroad.webhook', method: 'POST', scope: 'internal', description: 'Gumroad webhook ingestion', handler: '/api/gumroad' },
+          { action: 'brevo.sync', method: 'POST', scope: 'internal', description: 'Brevo email integration', handler: '/api/brevo' },
+          { action: 'community-triggers.readiness', method: 'POST', scope: 'dashboard', description: 'Community trigger readiness', handler: '/api?action=community-triggers' },
+          { action: 'social-publishers.readiness', method: 'POST', scope: 'dashboard', description: 'Social publisher readiness', handler: '/api?action=social-publishers' },
+          { action: 'facebook.publish', method: 'POST', scope: 'dashboard', description: 'Facebook publisher', handler: '/api/facebook' },
+          { action: 'instagram.publish', method: 'POST', scope: 'dashboard', description: 'Instagram publisher', handler: '/api/instagram' },
+          { action: 'threads.publish', method: 'POST', scope: 'dashboard', description: 'Threads publisher', handler: '/api/threads' },
+          { action: 'linkedin.publish', method: 'POST', scope: 'dashboard', description: 'LinkedIn publisher', handler: '/api/linkedin' },
+          { action: 'tiktok.publish', method: 'POST', scope: 'dashboard', description: 'TikTok publisher', handler: '/api/tiktok' },
+          { action: 'youtube.publish', method: 'POST', scope: 'dashboard', description: 'YouTube publisher', handler: '/api/youtube' },
+          { action: 'pinterest.publish', method: 'POST', scope: 'dashboard', description: 'Pinterest publisher', handler: '/api/pinterest' },
+          { action: 'google_sheets.run', method: 'POST', scope: 'dashboard', description: 'Google Sheets helper', handler: '/api/google-sheets' },
+          { action: 'cron.sellable.run', method: 'POST', scope: 'internal', description: 'Scheduled sellable cron jobs', handler: '/api/cron/sellable' },
+        ],
+      });
+    }
+
     if (action === 'test-env') {
       if (!checkDashboardApiKey(req)) {
         return res.status(401).json({ error: 'Unauthorized' });
@@ -1216,6 +1260,69 @@ export default async function handler(req, res) {
           error: 'Hermes delegation failed',
           details: process.env.NODE_ENV !== 'production' ? err.message : undefined,
         });
+      }
+    }
+    if (action === 'community-triggers') {
+      if (!checkDashboardApiKey(req)) {
+        return res.status(401).json(buildEnvelope({ ok: false, action: 'community-triggers', status: 'error', error: 'Unauthorized' }));
+      }
+
+      let payload = {};
+      if (req.method === 'POST' || req.method === 'GET') {
+        try {
+          payload = req.body && typeof req.body === 'object' ? req.body : {};
+        } catch (_) {
+          payload = {};
+        }
+      }
+
+      try {
+        const { handleCommunityTriggerRequest } = await import('../lib/community-triggers.js');
+        const result = handleCommunityTriggerRequest({
+          action: req.query?.action || payload.action || 'community-triggers.readiness',
+          payload,
+        });
+
+        return res.status(200).json(result);
+      } catch (err) {
+        return res.status(500).json(buildEnvelope({
+          ok: false,
+          action: 'community-triggers',
+          status: 'error',
+          error: 'Community trigger handling failed',
+          debug: err?.message || 'Unknown error',
+        }));
+      }
+    }
+
+    if (action === 'social-publishers') {
+      if (!checkDashboardApiKey(req)) {
+        return res.status(401).json(buildEnvelope({ ok: false, action: 'social-publishers', status: 'error', error: 'Unauthorized' }));
+      }
+
+      let payload = {};
+      try {
+        payload = req.body && typeof req.body === 'object' ? req.body : {};
+      } catch (_) {
+        payload = {};
+      }
+
+      try {
+        const { handleSocialPublisherRequest } = await import('../lib/social-publishers.js');
+        const result = handleSocialPublisherRequest({
+          action: req.query?.action || payload.action || 'publisher.readiness',
+          payload,
+        });
+
+        return res.status(200).json(result);
+      } catch (err) {
+        return res.status(500).json(buildEnvelope({
+          ok: false,
+          action: 'social-publishers',
+          status: 'error',
+          error: 'Social publisher handling failed',
+          debug: err?.message || 'Unknown error',
+        }));
       }
     }
   } catch (err) {
