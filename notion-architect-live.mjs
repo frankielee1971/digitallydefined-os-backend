@@ -67,13 +67,20 @@ async function runLiveExecution() {
       // Normalize payload shape for the write-layer
       payload = normalizePayload(phase, payload);
 
-      // Map legacy plan action names to supported writer actions
+      // Tighten action mapping fallback - emit only supported actions
       let action = phase.action;
       if (phase.action === 'updateDatabase') {
         if (phase.type === 'patch_db_relation') {
-          action = 'updateRelationProperty';
+          action = 'patchDatabase';
         } else if (phase.type === 'add_rollup') {
-          action = 'addRollup';
+          // Map to updateDatabase only if we have a supported payload
+          // For now, mark as BLOCKED since writer doesn't support addRollup
+          if (!phase.target || !phase.rollupProperty || !phase.relationProperty || !phase.rolledProperty) {
+            // Skip this phase - cannot execute without required fields
+            console.log(`  ${chalk.yellow('BLOCKED')} ${phase.name}: Missing required rollup configuration`);
+            continue;
+          }
+          action = 'patchDatabase';
         } else {
           action = 'patchDatabase';
         }

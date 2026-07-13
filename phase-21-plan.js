@@ -18,7 +18,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export const PHASES = [
   { id: 'A', name: 'Create GTD Inbox DB' },
+  { id: 'B', name: 'Create Projects DB' },
   { id: 'E', name: 'Create Someday / Maybe DB' },
+  { id: 'D', name: 'Create Areas DB' },
   { id: 'F', name: 'Add Next Action relation to Automation Log DB' },
   { id: 'G', name: 'Add Next Action relation to Automation Events DB' },
   { id: 'H', name: 'Canonicalize Product OS Status options' },
@@ -42,14 +44,30 @@ export const PHASES = [
 // Known IDs from the architecture plan
 // ---------------------------------------------------------------------------
 
-export const KNOWN_IDS = {
+// Helper to clean ID values - remove wrapper artifacts
+function cleanId(value) {
+  if (typeof value !== 'string') return value;
+  return value.replace(/[
+
+\[\]
+
+\-<>
+
+\[\]
+
+]/g, '').trim();
+}
+
+// Normalize all known IDs - replace wrapped placeholders with explicit invalid placeholders
+// Real IDs are kept as-is, malformed IDs with dashes are cleaned
+const rawKnownIds = {
   PARENT_PAGE_ID: 'ce80d0cb95648203991d8151cb5e4e64',
-  PROJECTS_DB_ID: '[PROJECTS_DB_ID]',
-  AREAS_DB_ID: '[AREAS_DB_ID]',
+  PROJECTS_DB_ID: 'REPLACE_WITH_REAL_PROJECTS_DB_ID',
+  AREAS_DB_ID: 'REPLACE_WITH_REAL_AREAS_DB_ID',
   PRODUCT_OS_DB_ID: '241ef3830b9f4458817281721f6d9dd7',
   DIGITAL_ASSETS_DB_ID: '3990d0cb95648357b0c3886078e04abe',
-  GTD_INBOX_DB_ID: '[GTD_INBOX_DB_ID]', // Will be created in Phase A
-  SOMEDAY_MAYBE_DB_ID: '[SOMEDAY_MAYBE_DB_ID]', // Will be created in Phase E
+  GTD_INBOX_DB_ID: '39c0d0cb95648167bba0000cd677aae8',
+  SOMEDAY_MAYBE_DB_ID: '39c0d0cb956481eba278000cf9efacf6',
   AUTOMATION_LOG_DB_ID: '9b60d0cb9564836c845488209d8d7e58',
   AUTOMATION_EVENTS_DB_ID: 'c844c5bd5a9f4e1ba17785bb1535d035',
   MONTHLY_REVIEW_DB_ID: 'b650d0cb956482fe9b19081f1ad1675d',
@@ -60,6 +78,14 @@ export const KNOWN_IDS = {
   CONTENT_LIBRARY_DB_ID: '4889f366d28e421aa569d84fa6c2bb04',
   TEMPLATES_LIBRARY_DB_ID: 'e630d0cb95648315b7078823c16cd343',
 };
+
+// Apply cleanId to all IDs to remove any wrapper artifacts
+const cleanedIds = {};
+for (const [key, value] of Object.entries(rawKnownIds)) {
+  cleanedIds[key] = cleanId(value);
+}
+
+export const KNOWN_IDS = cleanedIds;
 
 // ---------------------------------------------------------------------------
 // Payload definitions
@@ -102,6 +128,55 @@ export const payloads = {
       return { valid: issues.length === 0, issues };
     },
   },
+
+  B: {
+    phase: 'B',
+    name: 'Create Projects DB',
+    type: 'create_db',
+    action: 'createDatabase',
+    parent: KNOWN_IDS.PARENT_PAGE_ID,
+    title: 'Projects',
+    requires: ['PARENT_PAGE_ID'],
+    buildPayload: () => ({
+      parent: { type: 'page_id', page_id: KNOWN_IDS.PARENT_PAGE_ID },
+      icon: { type: 'emoji', emoji: '📁' },
+      title: [{ type: 'text', text: { content: 'Projects' } }],
+      properties: {
+        'Name': { title: {} },
+        'Status': {
+          status: {
+            options: [
+              { name: 'Active', color: 'green' },
+              { name: 'On Hold', color: 'yellow' },
+              { name: 'Completed', color: 'blue' }
+            ]
+          }
+        },
+        'Area': {
+          relation: {
+            database_id: KNOWN_IDS.AREAS_DB_ID
+          }
+        },
+        'GTD Next Action': {
+          relation: {
+            database_id: KNOWN_IDS.GTD_INBOX_DB_ID
+          }
+        },
+        'Review Date': { date: {} },
+        'Completed Date': { date: {} },
+        'Notes': { rich_text: {} }
+      }
+    }),
+    persistIdAs: 'PROJECTS_DB_ID',
+    validation: () => {
+      const issues = [];
+      if (KNOWN_IDS.PARENT_PAGE_ID.includes('[')) {
+        issues.push('PARENT_PAGE_ID is a placeholder — must be replaced with actual page ID');
+      }
+      return { valid: issues.length === 0, issues };
+    },
+  },
+
   E: {
     phase: 'E',
     name: 'Create Someday / Maybe DB',
@@ -137,6 +212,42 @@ export const payloads = {
       return { valid: issues.length === 0, issues };
     },
   },
+
+  D: {
+    phase: 'D',
+    name: 'Create Areas DB',
+    type: 'create_db',
+    action: 'createDatabase',
+    parent: KNOWN_IDS.PARENT_PAGE_ID,
+    title: 'Areas',
+    requires: ['PARENT_PAGE_ID'],
+    buildPayload: () => ({
+      parent: { type: 'page_id', page_id: KNOWN_IDS.PARENT_PAGE_ID },
+      icon: { type: 'emoji', emoji: '🗂️' },
+      title: [{ type: 'text', text: { content: 'Areas' } }],
+      properties: {
+        'Name': { title: {} },
+        'Status': {
+          status: {
+            options: [
+              { name: 'Active', color: 'green' },
+              { name: 'Archived', color: 'gray' }
+            ]
+          }
+        },
+        'Notes': { rich_text: {} }
+      }
+    }),
+    persistIdAs: 'AREAS_DB_ID',
+    validation: () => {
+      const issues = [];
+      if (KNOWN_IDS.PARENT_PAGE_ID.includes('[')) {
+        issues.push('PARENT_PAGE_ID is a placeholder — must be replaced with actual page ID');
+      }
+      return { valid: issues.length === 0, issues };
+    },
+  },
+
   F: {
     phase: 'F',
     name: 'Add Next Action relation to Automation Log DB',
@@ -167,6 +278,7 @@ export const payloads = {
       return { valid: issues.length === 0, issues };
     },
   },
+
   G: {
     phase: 'G',
     name: 'Add Next Action relation to Automation Events DB',
@@ -197,6 +309,7 @@ export const payloads = {
       return { valid: issues.length === 0, issues };
     },
   },
+
   H: {
     phase: 'H',
     name: 'Canonicalize Product OS Status options',
@@ -229,6 +342,7 @@ export const payloads = {
       return { valid: issues.length === 0, issues };
     },
   },
+
   I: {
     phase: 'I',
     name: 'Canonicalize Ideas & Intake DB Status options',
@@ -262,6 +376,7 @@ export const payloads = {
       return { valid: issues.length === 0, issues };
     },
   },
+
   J: {
     phase: 'J',
     name: 'Canonicalize Digital Assets DB Status options',
@@ -294,6 +409,7 @@ export const payloads = {
       return { valid: issues.length === 0, issues };
     },
   },
+
   K: {
     phase: 'K',
     name: 'Canonicalize Content Blocks DB Status options',
@@ -326,6 +442,7 @@ export const payloads = {
       return { valid: issues.length === 0, issues };
     },
   },
+
   L: {
     phase: 'L',
     name: 'Canonicalize Automations Log DB Status options',
@@ -359,6 +476,7 @@ export const payloads = {
       return { valid: issues.length === 0, issues };
     },
   },
+
   M: {
     phase: 'M',
     name: 'Canonicalize Automation Events DB Status options',
@@ -391,12 +509,13 @@ export const payloads = {
       return { valid: issues.length === 0, issues };
     },
   },
+
   C: {
     phase: 'C',
     name: 'Replace DigitalAssets rich-text with relation',
     type: 'patch_db_relation',
     action: 'updateDatabase',
-    target: '[TARGET_DB_ID]',
+    target: 'REPLACE_WITH_REAL_TARGET_DB_ID',
     property: 'Digital Assets',
     relationTo: 'DIGITAL_ASSETS_DB_ID',
     requires: ['TARGET_DB_ID', 'DIGITAL_ASSETS_DB_ID'],
@@ -420,6 +539,7 @@ export const payloads = {
       return { valid: issues.length === 0, issues };
     },
   },
+
   N: {
     phase: 'N',
     name: 'Add Product OS → Product asset count rollup',
@@ -451,6 +571,7 @@ export const payloads = {
       return { valid: issues.length === 0, issues };
     },
   },
+
   O: {
     phase: 'O',
     name: 'Add Digital Assets DB → Asset revenue attached rollup',
@@ -485,6 +606,7 @@ export const payloads = {
       return { valid: issues.length === 0, issues };
     },
   },
+
   P: {
     phase: 'P',
     name: 'Add Monthly Review DB → Automation count rollup',
@@ -516,6 +638,7 @@ export const payloads = {
       return { valid: issues.length === 0, issues };
     },
   },
+
   Q: {
     phase: 'Q',
     name: 'Add Digital Assets DB → Reputation linked count rollup',
@@ -550,6 +673,7 @@ export const payloads = {
       return { valid: issues.length === 0, issues };
     },
   },
+
   R: {
     phase: 'R',
     name: 'Add Automation Events DB → Automation failure count rollup',
@@ -581,6 +705,7 @@ export const payloads = {
       return { valid: issues.length === 0, issues };
     },
   },
+
   S: {
     phase: 'S',
     name: 'Add Projects → GTD next action queue length rollup',
@@ -618,6 +743,7 @@ export const payloads = {
       return { valid: issues.length === 0, issues };
     },
   },
+
   T: {
     phase: 'T',
     name: 'Update lib/notion-schema.js backend alignment',
@@ -636,6 +762,7 @@ export const payloads = {
       return { valid: issues.length === 0, issues };
     },
   },
+
   U: {
     phase: 'U',
     name: 'Manual view configuration (UI only)',
