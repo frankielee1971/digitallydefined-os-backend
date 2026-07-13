@@ -305,9 +305,8 @@ async function runLiveExecution() {
 
 function resolveValue(value, registry) {
   if (typeof value === 'string') {
-    return value.replace(/\\[([A-Z_]+)\\]/g, (match, key) => registry[key] ?? match);
+    return value.replace(/\[([A-Z_]+)\]/g, (match, key) => registry[key] ?? match);
   }
-
   if (Array.isArray(value)) {
     return value.map(item => resolveValue(item, registry));
   }
@@ -322,6 +321,7 @@ function resolveValue(value, registry) {
 
   return value;
 }
+
 
 // Enhanced payload ID resolution: resolve placeholders + sanitize IDs
 function resolvePayloadIds(payload, registry) {
