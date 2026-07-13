@@ -92,7 +92,11 @@ async function runLiveExecution() {
       // Persist created database ID for later phases
       if (action === 'createDatabase' && result?.data?.id) {
         const dbId = result.data.id;
-        if (phase.phase === 'A') {
+        // Use persistIdAs if defined, otherwise fall back to phase-specific handling
+        if (phase.persistIdAs) {
+          createdIds[phase.persistIdAs] = dbId;
+          console.log(`  ↳ Persisted ${phase.persistIdAs} = ${dbId}`);
+        } else if (phase.phase === 'A') {
           createdIds.GTD_INBOX_DB_ID = dbId;
           console.log(`  ↳ Persisted GTD_INBOX_DB_ID = ${dbId}`);
         } else if (phase.phase === 'E') {

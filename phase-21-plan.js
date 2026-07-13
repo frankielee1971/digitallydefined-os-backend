@@ -18,9 +18,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export const PHASES = [
   { id: 'A', name: 'Create GTD Inbox DB' },
+  { id: 'D', name: 'Create Areas DB' },
   { id: 'B', name: 'Create Projects DB' },
   { id: 'E', name: 'Create Someday / Maybe DB' },
-  { id: 'D', name: 'Create Areas DB' },
+  { id: 'C', name: 'Replace DigitalAssets rich-text with relation' },
   { id: 'F', name: 'Add Next Action relation to Automation Log DB' },
   { id: 'G', name: 'Add Next Action relation to Automation Events DB' },
   { id: 'H', name: 'Canonicalize Product OS Status options' },
@@ -29,7 +30,6 @@ export const PHASES = [
   { id: 'K', name: 'Canonicalize Content Blocks DB Status options' },
   { id: 'L', name: 'Canonicalize Automations Log DB Status options' },
   { id: 'M', name: 'Canonicalize Automation Events DB Status options' },
-  { id: 'C', name: 'Replace DigitalAssets rich-text with relation' },
   { id: 'N', name: 'Add Product OS → Product asset count rollup' },
   { id: 'O', name: 'Add Digital Assets DB → Asset revenue attached rollup' },
   { id: 'P', name: 'Add Monthly Review DB → Automation count rollup' },
@@ -47,15 +47,7 @@ export const PHASES = [
 // Helper to clean ID values - remove wrapper artifacts
 function cleanId(value) {
   if (typeof value !== 'string') return value;
-  return value.replace(/[
-
-\[\]
-
-\-<>
-
-\[\]
-
-]/g, '').trim();
+  return value.replace(/[\[\]<>\-]/g, '').trim();
 }
 
 // Normalize all known IDs - replace wrapped placeholders with explicit invalid placeholders
@@ -66,8 +58,8 @@ const rawKnownIds = {
   AREAS_DB_ID: 'REPLACE_WITH_REAL_AREAS_DB_ID',
   PRODUCT_OS_DB_ID: '241ef3830b9f4458817281721f6d9dd7',
   DIGITAL_ASSETS_DB_ID: '3990d0cb95648357b0c3886078e04abe',
-  GTD_INBOX_DB_ID: '39c0d0cb95648167bba0000cd677aae8',
-  SOMEDAY_MAYBE_DB_ID: '39c0d0cb956481eba278000cf9efacf6',
+  GTD_INBOX_DB_ID: 'REPLACE_WITH_REAL_GTD_INBOX_DB_ID',
+  SOMEDAY_MAYBE_DB_ID: 'REPLACE_WITH_REAL_SOMEDAY_MAYBE_DB_ID',
   AUTOMATION_LOG_DB_ID: '9b60d0cb9564836c845488209d8d7e58',
   AUTOMATION_EVENTS_DB_ID: 'c844c5bd5a9f4e1ba17785bb1535d035',
   MONTHLY_REVIEW_DB_ID: 'b650d0cb956482fe9b19081f1ad1675d',
