@@ -23,7 +23,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Configuration
 // ---------------------------------------------------------------------------
 
-const DRY_RUN = true;
+const DRY_RUN = String(process.env.SELLABLE_DRY_RUN ?? 'true').trim().toLowerCase() !== 'false';
 const PHASES = [
   { id: 'A', name: 'Create GTD Inbox DB' },
   { id: 'E', name: 'Create Someday / Maybe DB' },
@@ -58,7 +58,7 @@ const KNOWN_IDS = {
   DIGITAL_ASSETS_DB_ID: '3990d0cb95648357b0c3886078e04abe',
   GTD_INBOX_DB_ID: '[GTD_INBOX_DB_ID]', // Will be created in Phase A
   AUTOMATION_LOG_DB_ID: '9b60d0cb9564836c845488209d8d7e58',
-  AUTOMATION_EVENTS_DB_ID: '[AUTOMATION_EVENTS_DB_ID]', // Does not exist yet
+  AUTOMATION_EVENTS_DB_ID: 'c844c5bd5a9f4e1ba17785bb1535d035',
   MONTHLY_REVIEW_DB_ID: 'b650d0cb956482fe9b19081f1ad1675d',
   MONEY_SNAPSHOT_DB_ID: '4210d0cb956482798af3083c1d7b5a67',
   REPUTATION_SIGNALS_DB_ID: 'be80d0cb956482f99f8a8886fb9bd6ed',

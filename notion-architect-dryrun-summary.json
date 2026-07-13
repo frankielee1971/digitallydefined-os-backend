@@ -1,16 +1,12 @@
 {
   "dryRun": true,
   "totalPhases": 19,
-  "ready": 10,
-  "blocked": 9,
+  "ready": 15,
+  "blocked": 4,
   "missingIds": [
     "PROJECTS_DB_ID",
     "AREAS_DB_ID",
-    "GTD_INBOX_DB_ID",
-    "AUTOMATION_EVENTS_DB_ID",
-    "MONTHLY_REVIEW_DB_ID",
-    "MONEY_SNAPSHOT_DB_ID",
-    "REPUTATION_SIGNALS_DB_ID"
+    "GTD_INBOX_DB_ID"
   ],
   "results": [
     {
@@ -42,7 +38,6 @@
       "status": "BLOCKED",
       "type": null,
       "issues": [
-        "AUTOMATION_EVENTS_DB_ID appears to be a placeholder",
         "GTD_INBOX_DB_ID is a placeholder — Phase A must run first"
       ]
     },
@@ -84,11 +79,9 @@
     {
       "phase": "M",
       "name": "Canonicalize Automation Events DB Status options",
-      "status": "BLOCKED",
-      "type": null,
-      "issues": [
-        "AUTOMATION_EVENTS_DB_ID appears to be a placeholder"
-      ]
+      "status": "READY",
+      "type": "patch_db_status",
+      "issues": []
     },
     {
       "phase": "C",
@@ -109,38 +102,30 @@
     {
       "phase": "O",
       "name": "Add Digital Assets DB → Asset revenue attached rollup",
-      "status": "BLOCKED",
-      "type": null,
-      "issues": [
-        "MONEY_SNAPSHOT_DB_ID is a placeholder — must be resolved"
-      ]
+      "status": "READY",
+      "type": "add_rollup",
+      "issues": []
     },
     {
       "phase": "P",
       "name": "Add Monthly Review DB → Automation count rollup",
-      "status": "BLOCKED",
-      "type": null,
-      "issues": [
-        "MONTHLY_REVIEW_DB_ID is a placeholder — must be resolved"
-      ]
+      "status": "READY",
+      "type": "add_rollup",
+      "issues": []
     },
     {
       "phase": "Q",
       "name": "Add Digital Assets DB → Reputation linked count rollup",
-      "status": "BLOCKED",
-      "type": null,
-      "issues": [
-        "REPUTATION_SIGNALS_DB_ID is a placeholder — must be resolved"
-      ]
+      "status": "READY",
+      "type": "add_rollup",
+      "issues": []
     },
     {
       "phase": "R",
       "name": "Add Automation Events DB → Automation failure count rollup",
-      "status": "BLOCKED",
-      "type": null,
-      "issues": [
-        "AUTOMATION_EVENTS_DB_ID appears to be a placeholder"
-      ]
+      "status": "READY",
+      "type": "add_rollup",
+      "issues": []
     },
     {
       "phase": "S",
