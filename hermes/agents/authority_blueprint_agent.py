@@ -1,4 +1,4 @@
-from .utils import fetch_trends
+from .utils import fetch_trends, save_trend
 
 
 class AuthorityBlueprintAgent:
@@ -12,12 +12,16 @@ class AuthorityBlueprintAgent:
         # Fetch trend data
         trends_data = fetch_trends(keyword)
         
+        # Store trend data automatically
+        storage_result = save_trend(trends_data)
+        
         # Use trend data in reasoning
         trend_insights = self._analyze_trends(trends_data)
         
         # Generate the blueprint with trend insights included
         blueprint = self._create_base_blueprint(keyword, **kwargs)
         blueprint["trend_insights"] = trend_insights
+        blueprint["trend_storage_status"] = storage_result
         
         return blueprint
     

@@ -1,4 +1,4 @@
-from .utils import fetch_trends
+from .utils import fetch_trends, save_trend
 
 
 class ProductGeneratorAgent:
@@ -12,12 +12,16 @@ class ProductGeneratorAgent:
         # Fetch trend data
         trends_data = fetch_trends(keyword)
         
+        # Store trend data automatically
+        storage_result = save_trend(trends_data)
+        
         # Use trend data in reasoning
         trend_insights = self._analyze_trends(trends_data)
         
         # Generate the product with trend insights included
         product = self._create_base_product(keyword, **kwargs)
         product["trend_insights"] = trend_insights
+        product["trend_storage_status"] = storage_result
         
         return product
     
