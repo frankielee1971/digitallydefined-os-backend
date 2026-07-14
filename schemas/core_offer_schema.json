@@ -1,0 +1,78 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://digitallydefined.online/schemas/core_offer.json",
+  "title": "Core Offer Content Schema",
+  "description": "JSON Schema for Primary paid product",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Title of the content silo",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of the content",
+      "minLength": 1
+    },
+    "content_type": {
+      "type": "string",
+      "description": "Type of content (e.g., ebook, course, template)",
+      "enum": [
+        "course",
+        "ebook",
+        "video_course",
+        "workshop",
+        "masterclass"
+      ]
+    },
+    "target_audience": {
+      "type": "string",
+      "description": "Target audience for this content",
+      "minLength": 1
+    },
+    "value_proposition": {
+      "type": "string",
+      "description": "Core value proposition",
+      "minLength": 1
+    },
+    "price": {
+      "type": "number",
+      "description": "Price in dollars",
+      "minimum": 0
+    },
+    "currency": {
+      "type": "string",
+      "default": "USD"
+    },
+    "modules": {
+      "type": "integer",
+      "description": "Number of modules/lessons",
+      "minimum": 1
+    },
+    "duration_minutes": {
+      "type": "integer",
+      "description": "Total content duration in minutes"
+    },
+    "certificate": {
+      "type": "boolean",
+      "description": "Includes completion certificate"
+    }
+  },
+  "required": [
+    "title",
+    "description",
+    "content_type",
+    "target_audience",
+    "value_proposition"
+  ],
+  "additionalProperties": true,
+  "metadata": {
+    "generated_at": "2026-07-14T17:47:19.284223Z",
+    "generator": "Hermes ContentSchemaGenerator",
+    "version": "1.0.0",
+    "funnel_stage": "Core Offer",
+    "funnel_order": 2
+  }
+}

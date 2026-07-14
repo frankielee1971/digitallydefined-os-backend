@@ -8,3 +8,24 @@ digitallydefined-os-backend/
 .vercel
 .env*.local
 nul
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+*.venv/
+
+# Logs
+logs/
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+Thumbs.db

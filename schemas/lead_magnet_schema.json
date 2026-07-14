@@ -1,0 +1,85 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://digitallydefined.online/schemas/lead_magnet.json",
+  "title": "Lead Magnet Content Schema",
+  "description": "JSON Schema for Free content to capture leads",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Title of the content silo",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of the content",
+      "minLength": 1
+    },
+    "content_type": {
+      "type": "string",
+      "description": "Type of content (e.g., ebook, course, template)",
+      "enum": [
+        "ebook",
+        "checklist",
+        "template",
+        "guide",
+        "cheat_sheet",
+        "webinar",
+        "video_series"
+      ]
+    },
+    "target_audience": {
+      "type": "string",
+      "description": "Target audience for this content",
+      "minLength": 1
+    },
+    "value_proposition": {
+      "type": "string",
+      "description": "Core value proposition",
+      "minLength": 1
+    },
+    "lead_capture_form": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "delivery_method": {
+      "type": "string",
+      "enum": [
+        "email",
+        "download",
+        "instant_access"
+      ]
+    },
+    "price": {
+      "type": "number",
+      "description": "Price in dollars (0 for free)",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "title",
+    "description",
+    "content_type",
+    "target_audience",
+    "value_proposition"
+  ],
+  "additionalProperties": true,
+  "metadata": {
+    "generated_at": "2026-07-14T17:47:19.282523Z",
+    "generator": "Hermes ContentSchemaGenerator",
+    "version": "1.0.0",
+    "funnel_stage": "Lead Magnet",
+    "funnel_order": 1
+  }
+}
