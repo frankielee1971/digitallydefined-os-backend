@@ -127,9 +127,64 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Missing or invalid message field', reply: '' });
     }
 
-    // === Build messages array ===
+    // === Agent Resolution ===
+    let systemPrompt = 'You are Hermes, the orchestrator of DigitallyDefined OS.';
+    let agentReply = null;
+
+    // Try to get agent from registry if agentKey is provided
+    if (body.agentKey) {
+      try {
+        const { getAgent } = await import('../agents/index.js');
+        const agent = getAgent(body.agentKey);
+
+        if (agent && typeof agent.run === 'function') {
+          const llm = {
+            chat: async (messages) => {
+              const prompt = Array.isArray(messages)
+                ? messages.map((msg) => `${msg.role}: ${msg.content}`).join('\n\n')
+                : String(messages);
+
+              const { omniRoute } = await import('../lib/omniroute.js');
+              const result = await omniRoute(prompt, {
+                systemPrompt: (Array.isArray(messages) && messages.find((msg) => msg.role === 'system')?.content) || systemPrompt,
+                jsonMode: false,
+                timeout: 60000,
+                fallbackModels: [
+                  process.env.OMNIROUTE_FALLBACK_MODEL_1,
+                  process.env.OMNIROUTE_FALLBACK_MODEL_2,
+                ].filter(Boolean),
+              });
+
+              if (result?.error) {
+                throw new Error(result.error);
+              }
+
+              return {
+                content: result?.reply || '',
+                raw: result,
+              };
+            },
+          };
+
+          const response = await agent.run({ input: message, llm });
+          agentReply = typeof response === 'string'
+            ? response
+            : response?.content || response?.reply || '';
+        } else if (agent && agent.systemPrompt) {
+          systemPrompt = agent.systemPrompt;
+        }
+      } catch (e) {
+        console.warn(`[Hermes] Agent registry not available: ${e.message}`);
+      }
+    }
+
+    // Allow direct systemPrompt override
+    if (body.systemPrompt) {
+      systemPrompt = body.systemPrompt;
+    }
+
     const messages = [
-      { role: 'system', content: 'You are Hermes, the orchestrator of DigitallyDefined OS.' },
+      { role: 'system', content: systemPrompt },
       { role: 'user', content: message },
     ];
 
@@ -150,98 +205,43 @@ export default async function handler(req, res) {
         .trim();
     };
 
+    // === AI Call via OmniRoute ===
     let reply = null;
-    let provider = null;
+    let provider = 'omniroute';
     let model = null;
     let lastError = null;
 
-    // === 1) OpenRouter (primary) ===
-    if (!reply) {
+    if (agentReply) {
+      reply = stripMarkdown(agentReply);
+      provider = 'agent';
+    } else {
       try {
-        const orKey = process.env.OPENROUTER_API_KEY;
-        const orModel = (process.env.OPENROUTER_MODEL || '').trim();
+        const { omniRoute } = await import('../lib/omniroute.js');
+        const result = await omniRoute(message, {
+          systemPrompt,
+          jsonMode: false,
+          timeout: 60000,
+          fallbackModels: [
+            process.env.OMNIROUTE_FALLBACK_MODEL_1,
+            process.env.OMNIROUTE_FALLBACK_MODEL_2,
+          ].filter(Boolean),
+        });
 
-        if (orKey && orModel) {
-          const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${orKey.trim()}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              model: orModel,
-              messages,
-            }),
-          });
-
-          if (!res.ok) {
-            const text = await res.text();
-            throw new Error(`OpenRouter error: ${res.status} ${res.statusText}${text ? ` - ${text.slice(0, 200)}` : ''}`);
-          }
-
-          const contentTypeRes = res.headers.get('content-type') || '';
-          if (!contentTypeRes.includes('application/json')) {
-            const text = await res.text();
-            throw new Error(`OpenRouter returned non-JSON response: ${text.slice(0, 200)}`);
-          }
-
-          const data = await res.json();
-          const raw = data?.choices?.[0]?.message?.content || '';
-          reply = stripMarkdown(raw);
-          provider = 'openrouter';
-          model = orModel;
+        if (result.error) {
+          lastError = result.error;
+        } else {
+          reply = stripMarkdown(result.reply);
+          model = result.model;
         }
       } catch (e) {
-        lastError = e.message || lastError || 'OpenRouter failed';
+        lastError = e.message || 'OmniRoute call failed';
       }
     }
 
-    // === 2) Groq (fallback) ===
-    if (!reply) {
-      try {
-        const groqKey = process.env.GROQ_API_KEY;
-        const groqModel = (process.env.GROQ_MODEL || '').trim();
-
-        if (groqKey && groqModel) {
-          const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${groqKey.trim()}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              model: groqModel,
-              messages,
-            }),
-          });
-
-          if (!res.ok) {
-            const text = await res.text();
-            throw new Error(`Groq error: ${res.status} ${res.statusText}${text ? ` - ${text.slice(0, 200)}` : ''}`);
-          }
-
-          const contentType = res.headers.get('content-type') || '';
-          if (!contentType.includes('application/json')) {
-            const text = await res.text();
-            throw new Error(`Groq returned non-JSON response: ${text.slice(0, 200)}`);
-          }
-
-          const data = await res.json();
-          const raw = data?.choices?.[0]?.message?.content || '';
-          reply = stripMarkdown(raw);
-          provider = 'groq';
-          model = groqModel;
-        }
-      } catch (e) {
-        lastError = e.message || lastError || 'Groq failed';
-      }
-    }
-
-    // === 3) Vercel AI Gateway (last resort) ===
     if (!reply) {
       reply = lastError
-        ? `Hermes provider failed: ${lastError}`
-        : 'Hermes could not reach any AI provider. Check backend env keys for OpenRouter, Groq, or Vercel.';
+        ? `Hermes AI request failed: ${lastError}`
+        : 'Hermes could not generate a response. Check OMNIROUTE_API_KEY configuration.';
     }
 
     return res.status(200).json({

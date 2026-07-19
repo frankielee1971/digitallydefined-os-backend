@@ -524,19 +524,6 @@ async function processAntigravityTrigger(payload) {
 }
 
 async function fetchAIBrief(context) {
-  const apiKey = process.env.GROQ_API_KEY;
-  const model = (process.env.MODEL || 'llama-3.3-70b-versatile').trim();
-
-  if (!apiKey) {
-    return {
-      working: ['AI brief unavailable — GROQ_API_KEY not set.'],
-      slipping: [],
-      nextActions: [],
-      error: 'Groq API key not set',
-      debug: null,
-    };
-  }
-
   const prompt = `You are analyzing a digital business dashboard for DigitallyDefined — a faceless digital asset business targeting Gen X women.
 Current stats:
 - Community members: ${context.communityCount}
@@ -554,25 +541,28 @@ Respond ONLY with a JSON object in this exact format (no markdown, no extra text
 }`;
 
   try {
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey.trim()}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model,
-        response_format: { type: 'json_object' },
-        messages: [{ role: 'user', content: prompt }],
-      }),
+    const { omniRoute } = await import('../lib/omniroute.js');
+    const result = await omniRoute(prompt, {
+      systemPrompt: 'You are a business analyst AI. Provide concise, actionable insights in JSON format.',
+      jsonMode: true,
+      timeout: 60000,
+      fallbackModels: [
+        process.env.OMNIROUTE_FALLBACK_MODEL_1,
+        process.env.OMNIROUTE_FALLBACK_MODEL_2,
+      ].filter(Boolean),
     });
 
-    const data = await parseJsonSafe(res, {});
-    if (!res.ok) {
-      throw new Error(data?.error?.message || 'Groq API error');
+    if (result.error) {
+      return {
+        working: ['Community is active and syncing.'],
+        slipping: ['AI brief could not be generated right now.'],
+        nextActions: ['Verify OmniRoute configuration if this persists.'],
+        error: result.error,
+        debug: process.env.NODE_ENV !== 'production' ? result.error : null,
+      };
     }
 
-    const raw = data?.choices?.[0]?.message?.content || '{}';
+    const raw = result.reply || '{}';
     const cleaned = String(raw).replace(/```json|```/g, '').trim();
 
     let parsed;
@@ -597,9 +587,9 @@ Respond ONLY with a JSON object in this exact format (no markdown, no extra text
     return {
       working: ['Community is active and syncing.'],
       slipping: ['AI brief could not be generated right now.'],
-      nextActions: ['Verify Groq credentials and model settings if this persists.'],
-      error: maskErrorDetails(err, 'Groq API'),
-      debug: process.env.NODE_ENV !== 'production' ? err.message || 'Groq request failed' : null,
+      nextActions: ['Verify OmniRoute configuration if this persists.'],
+      error: maskErrorDetails(err, 'OmniRoute API'),
+      debug: process.env.NODE_ENV !== 'production' ? err.message || 'OmniRoute request failed' : null,
     };
   }
 }
@@ -645,11 +635,11 @@ function buildAlerts(checks) {
     });
   }
 
-  if (!checks.groqSet) {
+  if (!checks.omnirouteSet) {
     alerts.push({
       type: 'info',
       source: 'AI Brief',
-      message: 'GROQ_API_KEY not set — AI Command Brief is using fallback text.',
+      message: 'OMNIROUTE_API_KEY not set — AI Command Brief is using fallback text.',
     });
   } else if (checks.aiError) {
     alerts.push({
@@ -677,9 +667,10 @@ function buildEnvStatus() {
     facebookAccessTokenSet: !!process.env.FACEBOOK_ACCESS_TOKEN,
     sendpulseApiIdSet: !!process.env.SENDPULSE_API_ID,
     sendpulseApiSecretSet: !!process.env.SENDPULSE_API_SECRET,
-    model: (process.env.MODEL || 'llama-3.3-70b-versatile').trim(),
+    model: (process.env.OMNIROUTE_MODEL || 'openai/gpt-4o-mini').trim(),
     sheetsWebhookUrlSet: !!process.env.SHEETS_WEBHOOK_URL,
-    groqApiKeySet: !!process.env.GROQ_API_KEY,
+    omnirouteApiKeySet: !!process.env.OMNIROUTE_API_KEY,
+    omnirouteBaseUrlSet: !!process.env.OMNIROUTE_BASE_URL,
     notionApiKeySet: !!process.env.NOTION_API_KEY,
     notionIdeasDbSet: !!process.env.NOTION_IDEAS_DB_ID,
     notionContentDbSet: !!process.env.NOTION_CONTENT_DB_ID,
