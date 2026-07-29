@@ -52,15 +52,15 @@ export function storeRoadmap(entry) {
   const id = String(entry.id || `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`).trim();
   const payload = Object.assign({}, entry, { id, storedAt: new Date().toISOString() });
   writeJson(id, payload);
-  return payload;
+  return Promise.resolve(payload);
 }
 
 export function getRoadmapById(id) {
   const raw = readJson(id);
   if (!raw) throw new Error(`Roadmap not found: ${id}`);
-  return raw;
+  return Promise.resolve(raw);
 }
 
 export function listRoadmaps() {
-  return listAll();
+  return Promise.resolve(listAll());
 }

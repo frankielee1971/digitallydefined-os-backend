@@ -1,246 +1,178 @@
-# ============================================================
-# Hermes OS - Main Configuration
-# Location: DigitallyDefined OS/config/hermes.yaml
-# ============================================================
+# ============================================
+# HERMES - Authority Silo Architect Builder
+# ============================================
 
-# ============================================================
-# INTEGRATIONS
-# ============================================================
+# Funnel: Lead Magnet → Core Offer → Authority Bundle → Community → Recurring Revenue
+# Each silo contains JSON Schema-based content that can be:
+# - Generated automatically
+# - Validated for consistency
+# - Packaged for distribution
+# - Expanded with new content
 
-integrations:
-  digitallydefined:
-    path: DigitallyDefined OS/integrations/hermes/hermes_connector.py
-    enabled: true
-  
-  trends_api:
-    endpoint: https://api.digitallydefined.online/trends
-    key: ${TRENDS_API_KEY}
-    enabled: true
-  
-  serp_api:
-    endpoint: https://serpapi.com/search.json
-    key: ${SERP_API_KEY}
-    enabled: true
-    monthly_limit: 250
+# ------------------------------------------------
+# Hermes Model Gateway
+# ------------------------------------------------
+model:
+  provider: "openai"
+  apiBaseUrl: "http://localhost:20128/v1"
+  apiKey: "none"
 
-# ============================================================
-# PROVIDERS
-# ============================================================
+# ------------------------------------------------
+# Agent Configuration
+# ------------------------------------------------
+agent:
+  name: "AuthoritySiloArchitectBuilder"
+  version: "1.0.0"
+  description: "Automates creation, validation, and packaging of JSON Schema-based content silos"
 
-providers:
-  # Local Ollama (free, offline-capable)
-  ollama:
-    type: ollama
-    url: http://localhost:11434
-    description: "Local LLM runtime for zero-cost inference"
-    status: optional
-    fallback_priority: 1
+  # Primary Agent Role
+  role: |
+    The Authority Silo Architect Builder is responsible for:
+    1. Generating content schemas for each silo in the funnel
+    2. Validating schemas against JSON Schema standards
+    3. Packaging content for Gumroad distribution
+    4. Managing schema expansion and version control
+    5. Integrating with Supabase for data persistence
+    6. Syncing with Notion for content management
 
-  # Bluesminds (primary paid tier)
-  bluesminds:
-    type: openai-compatible
-    api_key: ${BLUESMINDS_API_KEY}
-    base_url: https://api.bluesminds.ai/v1
-    description: "Primary paid AI provider with premium models"
-    status: recommended
-    fallback_priority: 2
+  # Agent Architecture
+  architecture:
+    primary_agent: "AuthoritySiloArchitect"
 
-  # StepFun (free tier with credits)
-  stepfun:
-    type: openai-compatible
-    api_key: ${STEPFUN_API_KEY}
-    base_url: https://api.stepfun.com/v1
-    description: "Free tier with daily credits"
-    status: recommended
-    fallback_priority: 3
+    sub_agents:
+      - name: "ContentSchemaGenerator"
+        module: "modules.content_schema_generator"
+        function: "generate_schema"
+        description: "Generates JSON schemas for content silos"
 
-  # Agnes AI (free fallback)
-  agnes:
-    type: openai-compatible
-    api_key: ${AGNES_API_KEY}
-    base_url: https://api.agnes.ai/v1
-    description: "Free AI models for fallback"
-    status: optional
-    fallback_priority: 4
+      - name: "SchemaValidator"
+        module: "modules.schema_validator"
+        function: "validate_schema"
+        description: "Validates schemas against JSON Schema standards"
 
-  # Mistral (fallback)
-  mistral:
-    type: mistral
-    api_key: ${MISTRAL_API_KEY}
-    description: "Fallback text model"
-    status: optional
-    fallback_priority: 5
+      - name: "ProductPackager"
+        module: "modules.product_packager"
+        function: "package_product"
+        description: "Packages content for Gumroad distribution"
 
-# ============================================================
-# MODELS
-# ============================================================
+      - name: "ExpansionManager"
+        module: "modules.expansion_manager"
+        function: "manage_expansion"
+        description: "Manages schema expansion and version control"
 
-models:
-  # Zero-cost local models
-  local:
-    provider: ollama
-    model: qwen2.5:7b
+  # Enhancements
+  enhancements:
+    logging:
+      enabled: true
+      log_path: "logs/"
+      log_level: "INFO"
+      log_file: "authority_silo_architect.log"
 
-  coder:
-    provider: ollama
-    model: qwen2.5-coder:7b
+    version_control:
+      enabled: true
+      schema: "semantic"
 
-  # StepFun free tier
-  stepfun_free:
-    provider: stepfun
-    model: stepfun/step-3.7-flash:free
+    monthly_schema_updates:
+      enabled: true
+      schedule: "monthly"
 
-  stepfun_premium:
-    provider: stepfun
-    model: stepfun/step-3.7-flash
+    automation:
+      schedule:
+        - task: "manage_expansion"
+          frequency: "monthly"
+          description: "Push new schema drops to the DigitallyDefined community"
 
-  # Agnes free models
-  agnes_flash_2_0:
-    provider: agnes
-    model: agnes-2.0-flash
+    integrations:
+      - name: "Gumroad"
+        type: "commerce"
+        api_key: "${GUMROAD_API_KEY}"
+        product_id: "${GUMROAD_PRODUCT_ID}"
 
-  agnes_flash_2_5:
-    provider: agnes
-    model: agnes-2.5-flash
+      - name: "Supabase"
+        type: "database"
+        url: "${SUPABASE_URL}"
+        key: "${SUPABASE_KEY}"
+        table: "authority_silos"
 
-  # Bluesminds premium models
-  deepseek:
-    provider: bluesminds
-    model: bluesminds/deepseek-r1
+      - name: "Notion"
+        type: "dashboard"
+        token: "${NOTION_TOKEN}"
+        database_id: "${NOTION_DATABASE_ID}"
 
-  openai:
-    provider: bluesminds
-    model: bluesminds/gpt-4.1-mini
+# ------------------------------------------------
+# Funnel Configuration
+# ------------------------------------------------
+funnel:
+  stages:
+    - name: "Lead Magnet"
+      order: 1
+      description: "Free content to capture leads"
+      schema_template: "lead_magnet_schema.json"
 
-  google:
-    provider: bluesminds
-    model: bluesminds/gemini-3.5-flash
+    - name: "Core Offer"
+      order: 2
+      description: "Primary paid product"
+      schema_template: "core_offer_schema.json"
 
-  hermes_3:
-    provider: bluesminds
-    model: bluesminds/hermes-3
+    - name: "Authority Bundle"
+      order: 3
+      description: "Premium content package"
+      schema_template: "authority_bundle_schema.json"
 
-  hermes_3_coder:
-    provider: bluesminds
-    model: bluesminds/hermes-3-coder
+    - name: "Community"
+      order: 4
+      description: "Community access product"
+      schema_template: "community_schema.json"
 
-  # Fallback text model
-  mistral:
-    provider: mistral
-    model: mistral-large-latest
+    - name: "Recurring Revenue"
+      order: 5
+      description: "Subscription-based product"
+      schema_template: "recurring_revenue_schema.json"
 
-# ============================================================
-# ROUTING RULES
-# ============================================================
+# ------------------------------------------------
+# Schema Standards
+# ------------------------------------------------
+schema_standards:
+  format: "JSON Schema Draft 7"
+  required_fields:
+    - "title"
+    - "description"
+    - "content_type"
+    - "target_audience"
+    - "value_proposition"
+  validation_rules:
+    - "schema must be valid JSON"
+    - "all required fields must be present"
+    - "content_type must match funnel stage"
+    - "value_proposition must be non-empty"
 
-routing:
-  # Text tasks
-  - when: seo_research
-    use: deepseek
+# ------------------------------------------------
+# Execution Settings
+# ------------------------------------------------
+execution:
+  parallel_processing: true
+  max_workers: 4
+  retry_attempts: 3
+  timeout: 300  # seconds
 
-  - when: strategy
-    use: deepseek
+# ------------------------------------------------
+# Environment Variables (placeholders)
+# ------------------------------------------------
+environment:
+  - "GUMROAD_API_KEY=${GUMROAD_API_KEY}"
+  - "GUMROAD_PRODUCT_ID=${GUMROAD_PRODUCT_ID}"
+  - "SUPABASE_URL=${SUPABASE_URL}"
+  - "SUPABASE_KEY=${SUPABASE_KEY}"
+  - "NOTION_TOKEN=${NOTION_TOKEN}"
+  - "NOTION_DATABASE_ID=${NOTION_DATABASE_ID}"
 
-  - when: reasoning
-    use: deepseek
-
-  - when: creative
-    use: openai
-
-  - when: long_form
-    use: openai
-
-  - when: fast
-    use: google
-
-  - when: summaries
-    use: google
-
-  - when: coding
-    use: hermes_3_coder
-
-  # Image tasks
-  - when: brand_image
-    use: flux_dev
-
-  - when: thumbnail
-    use: flux_schnell
-
-  # Video tasks
-  - when: broll
-    use: dream_machine
-
-  - when: cinematic
-    use: kling
-
-  # Safety net
-  - when: fallback
-    use: mistral
-
-  # Default
-  - default: stepfun_free
-
-# ============================================================
-# AGENTOPS INTEGRATION
-# ============================================================
-
-agentops:
-  enabled: true
-  api_key: ${AGENTOPS_API_KEY}
-  project: "hermes-os-francescas-brain"
-  environment: "development"
-
-  telemetry:
-    enabled: true
-    log_llm_calls: true
-    log_tool_calls: true
-    log_agent_actions: true
-    track_credits: true
-    track_latency: true
-
-  session:
-    auto_start: true
-    auto_end: true
-    tags:
-      - "hermes-os"
-      - "francescas-brain"
-      - "digitallydefined"
-
-  alerts:
-    enabled: true
-    notify_on_error: true
-    notify_on_credit_depletion: true
-    webhook_url: ""
-
-# ============================================================
-# TELEMETRY
-# ============================================================
-
-telemetry:
-  enabled: true
-  fields:
-    - model_used
-    - fallback_triggered
-    - retry_attempts
-    - routing_decision
-    - reasoning_depth
-    - agentops_session_id
-
-# ============================================================
-# RETRY LOGIC
-# ============================================================
-
-retry:
-  attempts: 1
-  escalate_on_failure: true
-
-# ============================================================
-# PATHS
-# ============================================================
-
-paths:
-  config: "DigitallyDefined OS/config/"
-  agents: "DigitallyDefined OS/agents/"
-  workflows: "DigitallyDefined OS/workflows/"
-  kanban: "DigitallyDefined OS/kanban/"
-  logs: "logs/"
+# ------------------------------------------------
+# MCP Deployment Configuration
+# ------------------------------------------------
+mcp_deployment:
+  environment: "production"
+  service_name: "AuthoritySiloArchitectBuilder"
+  entrypoint: "main.py"
+  port: 8080
+  auto_restart: true
+  logging: "logs/authority_silo_architect.log"
