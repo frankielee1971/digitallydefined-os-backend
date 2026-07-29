@@ -1,34 +1,14 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
-  "headers": [
-    {
-      "source": "/(.*)",
-      "headers": [
-        {
-          "key": "Access-Control-Allow-Origin",
-          "value": "https://dashboard.digitallydefined.online"
-        },
-        {
-          "key": "Access-Control-Allow-Methods",
-          "value": "GET, POST, OPTIONS"
-        },
-        {
-          "key": "Access-Control-Allow-Headers",
-          "value": "Content-Type, x-api-key, Authorization"
-        },
-        {
-          "key": "Access-Control-Allow-Credentials",
-          "value": "true"
-        }
-      ]
-    }
-  ],
   "crons": [
-    "*/30 * * * * https://digitallydefined-os-backend.vercel.app/api/cron/sellable?job=sellable-health&action=dry-run",
-    "0 8 * * 1 https://digitallydefined-os-backend.vercel.app/api/cron/sellable?job=revenue-automation&action=dry-run",
-    "0 9 * * 1 https://digitallydefined-os-backend.vercel.app/api/cron/sellable?job=seo-automation&action=dry-run",
-    "0 7 * * * https://digitallydefined-os-backend.vercel.app/api/cron/sellable?job=daily-sellable-report&action=dry-run",
-    "0 8 1 * * https://digitallydefined-os-backend.vercel.app/api/cron/sellable?job=monthly-revenue-review&action=dry-run"
+    {
+      "path": "/api/followup",
+      "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/post-publisher",
+      "schedule": "0 0 * * *"
+    }
   ]
 }

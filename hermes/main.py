@@ -21,6 +21,14 @@ except ImportError:
     print("Error: PyYAML is not installed. Install it with: pip install pyyaml")
     sys.exit(1)
 
+# Initialize AgentOps for telemetry and monitoring
+try:
+    import agentops
+    AGENTOPS_AVAILABLE = True
+except ImportError:
+    AGENTOPS_AVAILABLE = False
+    print("Warning: AgentOps not installed. Install with: pip install agentops")
+
 # ✅ Fix Windows console encoding (prevents UnicodeEncodeError)
 sys.stdout.reconfigure(encoding='utf-8')
 
@@ -46,6 +54,9 @@ class Hermes:
         self.config = self._load_config(config_path)
         self._setup_logging()
         self._load_environment()
+        
+        # Initialize AgentOps for telemetry
+        self._init_agentops()
 
         # Initialize sub-agents
         self.schema_generator = ContentSchemaGenerator(self.config)
@@ -99,6 +110,23 @@ class Hermes:
             if '=' in var:
                 key, value = var.split('=', 1)
                 os.environ[key] = value
+
+    def _init_agentops(self):
+        """Initialize AgentOps for telemetry and monitoring."""
+        if not AGENTOPS_AVAILABLE:
+            self.logger.warning("AgentOps not available - skipping initialization")
+            return
+        
+        try:
+            api_key = os.getenv("AGENTOPS_API_KEY")
+            if api_key:
+                agentops.init(api_key=api_key)
+                self.logger.info("✓ AgentOps initialized with API key")
+            else:
+                agentops.init()
+                self.logger.info("✓ AgentOps initialized in demo mode")
+        except Exception as e:
+            self.logger.error(f"Failed to initialize AgentOps: {e}")
 
     def start(self, config_path: str = None):
         """Start the Hermes agent system."""

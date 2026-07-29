@@ -6,13 +6,13 @@
  * All AI requests flow through OmniRoute's single endpoint with auto-fallback.
  */
 
-import { hermesSystemPrompt } from '../prompts/hermesSystemPrompt.js';
+import { hermesSystemPrompt } from './hermesSystemPrompt';
 
 // Initialize AgentOps for monitoring
 let agentops = null;
 try {
   const AgentOps = await import('agentops');
-  const AGENTOPS_API_KEY = process.env.AGENTOPS_API_KEY;
+  const AGENTOPS_API_KEY = Deno.env.get('AGENTOPS_API_KEY');
   if (AGENTOPS_API_KEY) {
     agentops = new AgentOps.default({ apiKey: AGENTOPS_API_KEY });
     console.log('✓ AgentOps initialized for OmniRoute');
@@ -23,9 +23,9 @@ try {
   console.log('⚠️  AgentOps not available:', e.message);
 }
 
-const OMNIROUTE_BASE_URL = (process.env.OMNIROUTE_BASE_URL || 'http://localhost:20128').replace(/\/$/, '');
-const OMNIROUTE_API_KEY = (process.env.OMNIROUTE_API_KEY || process.env.ROUTER_API_KEY || 'none').trim();
-const DEFAULT_MODEL = (process.env.OMNIROUTE_MODEL || 'free').trim();
+const OMNIROUTE_BASE_URL = (Deno.env.get('OMNIROUTE_BASE_URL') || 'http://localhost:20128' || 'http://localhost:20128').replace(/\/$/, '');
+const OMNIROUTE_API_KEY = (Deno.env.get('OMNIROUTE_API_KEY') || 'none' || Deno.env.get('ROUTER_API_KEY') || 'none' || 'none').trim();
+const DEFAULT_MODEL = (Deno.env.get('OMNIROUTE_MODEL') || 'free' || 'free').trim();
 const DEFAULT_SYSTEM_PROMPT = hermesSystemPrompt;
 
 /**
