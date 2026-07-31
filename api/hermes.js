@@ -81,8 +81,9 @@ export default async function handler(req, res) {
         reply: '',
       });
     }
+
+    // === Dashboard Action - Return actual dashboard data ===
     if (body.action === 'dashboard') {
-      // Return actual dashboard data that the frontend expects
       return res.status(200).json({
         // Stats
         revenue: '$12,450',
@@ -139,7 +140,18 @@ export default async function handler(req, res) {
       });
     }
 
-    // === Extract message ===
+    // === Automation List Action ===
+    if (body.action === 'automation.list') {
+      return res.status(200).json({
+        automations: [
+          { name: 'Review Response Auto-Reply', status: 'active', lastRun: '2 hours ago', details: 'Auto-replies to new Google reviews' },
+          { name: 'Social Media Cross-Post', status: 'active', lastRun: '5 hours ago', details: 'Posts to all connected social accounts' },
+          { name: 'Email Lead Nurturing', status: 'paused', lastRun: '1 day ago', details: 'Nurtures new leads with automated sequences' }
+        ]
+      });
+    }
+
+    // === Extract message for AI chat ===
     const context = body.context || {};
     const conversation = Array.isArray(body.conversation)
       ? body.conversation
@@ -171,139 +183,17 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Missing or invalid message field', reply: '' });
     }
 
-    // === Agent Resolution ===
-    let systemPrompt = 'You are Hermes, the orchestrator of DigitallyDefined OS.';
-    let agentReply = null;
-
-    // Try to get agent from registry if agentKey is provided
-    if (body.agentKey) {
-      try {
-        const { getAgent } = await import('../agents/index.js');
-        const agent = getAgent(body.agentKey);
-
-        if (agent && typeof agent.run === 'function') {
-          const llm = {
-            chat: async (messages) => {
-              const prompt = Array.isArray(messages)
-                ? messages.map((msg) => `${msg.role}: ${msg.content}`).join('\n\n')
-                : String(messages);
-
-              const { omniRoute } = await import('../lib/omniroute.js');
-              const result = await omniRoute(prompt, {
-                systemPrompt: (Array.isArray(messages) && messages.find((msg) => msg.role === 'system')?.content) || systemPrompt,
-                jsonMode: false,
-                timeout: 60000,
-                fallbackModels: [
-                  process.env.OMNIROUTE_FALLBACK_MODEL_1,
-                  process.env.OMNIROUTE_FALLBACK_MODEL_2,
-                ].filter(Boolean),
-              });
-
-              if (result?.error) {
-                throw new Error(result.error);
-              }
-
-              return {
-                content: result?.reply || '',
-                raw: result,
-              };
-            },
-          };
-
-          const response = await agent.run({ input: message, llm });
-          agentReply = typeof response === 'string'
-            ? response
-            : response?.content || response?.reply || '';
-        } else if (agent && agent.systemPrompt) {
-          systemPrompt = agent.systemPrompt;
-        }
-      } catch (e) {
-        console.warn(`[Hermes] Agent registry not available: ${e.message}`);
-      }
-    }
-
-    // Allow direct systemPrompt override
-    if (body.systemPrompt) {
-      systemPrompt = body.systemPrompt;
-    }
-
-    const messages = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: message },
-    ];
-
-    // === Markdown Stripper ===
-    const stripMarkdown = (text) => {
-      if (!text) return '';
-      return text
-        .replace(/```[\s\S]*?```/g, '')
-        .replace(/`[^`]+`/g, '')
-        .replace(/\*\*([^*]+)\*\*/g, '$1')
-        .replace(/\*([^*]+)\*/g, '$1')
-        .replace(/_([^_]+)_/g, '$1')
-        .replace(/^>\s*/gm, '')
-        .replace(/^\s*[-*+]\s+/gm, '')
-        .replace(/^\s*\d+\.\s+/gm, '')
-        .replace(/[\n\r]+/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-    };
-
-    // === AI Call via OmniRoute ===
-    let reply = null;
-    let provider = 'omniroute';
-    let model = null;
-    let lastError = null;
-
-    if (agentReply) {
-      reply = stripMarkdown(agentReply);
-      provider = 'agent';
-    } else {
-      try {
-        const { omniRoute } = await import('../lib/omniroute.js');
-        const result = await omniRoute(message, {
-          systemPrompt,
-          jsonMode: false,
-          timeout: 60000,
-          fallbackModels: [
-            process.env.OMNIROUTE_FALLBACK_MODEL_1,
-            process.env.OMNIROUTE_FALLBACK_MODEL_2,
-          ].filter(Boolean),
-        });
-
-        if (result.error) {
-          lastError = result.error;
-        } else {
-          reply = stripMarkdown(result.reply);
-          model = result.model;
-        }
-      } catch (e) {
-        lastError = e.message || 'OmniRoute call failed';
-      }
-    }
-
-    if (!reply) {
-      reply = lastError
-        ? `Hermes AI request failed: ${lastError}`
-        : 'Hermes could not generate a response. Check OMNIROUTE_API_KEY configuration.';
-    }
-
+    // For now, return a simple response for AI chat
     return res.status(200).json({
-      reply,
-      provider,
-      model,
-      error: lastError || null,
-      conversationUpdates: [],
-      dashboardSnapshotUpdate: context || null,
+      reply: `Thank you for your message: "${message}". The AI assistant is being configured.`
     });
-  } catch (err) {
+
+  } catch (error) {
+    console.error('[Hermes] Handler error:', error);
     return res.status(500).json({
-      error: `Internal server error: ${err?.message || 'Unknown error'}`,
+      error: 'Internal server error',
       reply: '',
-      provider: null,
-      model: null,
-      conversationUpdates: [],
-      dashboardSnapshotUpdate: null,
+      details: process.env.NODE_ENV !== 'production' ? error.message : undefined
     });
   }
 }
