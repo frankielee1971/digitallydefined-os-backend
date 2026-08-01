@@ -1,25 +1,29 @@
-// _shared/cors-utils.ts
-// Shared CORS utilities for all Supabase Edge Functions
-
-export function corsHeaders(origin: string): Record<string, string> {
-  const allowedOrigins = [
-    "https://dashboard.digitallydefined.online",
-    "https://digitallydefined.online",
-    "http://localhost:3000",
-    "http://localhost:5173",
-  ];
-  const allowed = allowedOrigins.includes(origin) ? origin : "https://digitallydefined.online";
-
+// Shared CORS utilities for Supabase Edge Functions
+export function corsHeaders(origin: string) {
   return {
-    "Access-Control-Allow-Origin": allowed,
-    "Access-Control-Allow-Methods": "OPTIONS, POST, GET, PUT, DELETE",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, x-api-key",
-    "Access-Control-Allow-Credentials": "true",
-    "Access-Control-Max-Age": "86400",
-    "Vary": "Origin",
+    'Access-Control-Allow-Origin': origin || '*',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS, PUT, DELETE',
+    'Access-Control-Allow-Headers': 'Content-Type, apikey, Authorization, x-api-key',
+    'Access-Control-Max-Age': '86400',
   };
 }
 
-export function applyCors(req: Request): Record<string, string> {
-  return corsHeaders(req.headers.get("origin") || "");
+export function createCorsResponse(status: number, body: any, origin: string = '') {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      ...corsHeaders(origin),
+    },
+  });
+}
+
+export function handleCors(req: Request): Response | null {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', {
+      status: 200,
+      headers: corsHeaders(req.headers.get('origin') || ''),
+    });
+  }
+  return null;
 }
