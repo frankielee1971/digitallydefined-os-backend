@@ -55,7 +55,15 @@ export default async function handler(req, res) {
     process.env.DASHBOARD_API_KEY || process.env.VITE_DASHBOARD_API_KEY || ''
   ).trim();
 
-  if (!expectedKey || providedKey !== expectedKey) {
+  if (!expectedKey) {
+    console.warn('[Hermes] DASHBOARD_API_KEY not configured');
+    // Allow requests without key in development
+    if (process.env.NODE_ENV === 'production') {
+      return res.status(500).json({ error: 'API key not configured', reply: '' });
+    }
+  }
+
+  if (expectedKey && providedKey !== expectedKey) {
     return res.status(401).json({ error: 'Unauthorized - Invalid or missing API key', reply: '' });
   }
 
@@ -92,6 +100,14 @@ export default async function handler(req, res) {
         reply: '',
       });
     }
+
+    // === Request Logging ===
+    console.log(`[Hermes] ${req.method} ${req.url} from ${origin}`, {
+      action: body.action,
+      agentKey: body.agentKey,
+      hasApiKey: !!providedKey,
+      timestamp: new Date().toISOString()
+    });
 
     // === Dashboard Action - Return mock data for now ===
     if (body.action === 'dashboard') {
@@ -190,14 +206,25 @@ export default async function handler(req, res) {
         });
       }
 
+      // Validate input schema
+      const inputData = body.inputData || body.data || body;
+      if (!inputData || typeof inputData !== 'object' || Array.isArray(inputData)) {
+        return res.status(400).json({
+          error: `Invalid input for ${agentKey}: input must be a JSON object`,
+          agent: agentKey,
+          reply: '',
+        });
+      }
+
       try {
-        const result = await agent(body.inputData || body.data || body);
+        const result = await agent(inputData);
         return res.status(200).json({
           agent: agentKey,
           result,
           reply: JSON.stringify(result),
         });
       } catch (error) {
+        console.error(`[Agent ${agentKey}] Execution error:`, error);
         return res.status(500).json({
           error: `Agent execution failed: ${error.message}`,
           agent: agentKey,

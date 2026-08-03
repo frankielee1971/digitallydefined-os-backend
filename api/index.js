@@ -1,8 +1,11 @@
 // /api/index.js
 // Hardened unified API handler for Vercel with method validation, env test route, rate limiting, and masked external errors
 
+import { buildEnvelope } from '../lib/meta-auth.js';
+
 const ALLOWED_ORIGINS = [
   'https://dashboard.digitallydefined.online',
+  'https://digitallydefined.online',
   'http://localhost:3000',
   'http://localhost:5173',
 ];
@@ -719,7 +722,7 @@ export default async function handler(req, res) {
 
   if (action === 'notion-webhook') {
     const webhookSecret = process.env.NOTION_WEBHOOK_SECRET;
-      
+    
     if (!webhookSecret) {
       console.error('[Antigravity] Notion webhook secret not configured');
       return res.status(500).json({ 

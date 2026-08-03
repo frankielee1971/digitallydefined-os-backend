@@ -2,10 +2,10 @@
  * DigitallyDefined Unified Edge Function
  * 
  * Replaces all Vercel serverless functions with a single Supabase Edge Function.
- * Handles: /api/hermes, /api/vault, /api/sync, /api/automations, /api/models
+ * Handles: /api/hermes, /api/sync, /api/vault, /api/automations, /api/models
  * 
  * Usage:
- *   curl -X POST https://dijjlppdljpcgyoakdnq.supabase.co/functions/v1/hermes \
+ *   curl -X POST https://<project>.supabase.co/functions/v1/hermes \
  *     -H "Content-Type: application/json" \
  *     -H "apikey: <anon-key>" \
  *     -H "x-api-key: <dashboard-api-key>" \
@@ -31,7 +31,7 @@ const MISTRAL_API_KEY = Deno.env.get('MISTRAL_API_KEY') || '';
 const GROQ_API_KEY = Deno.env.get('GROQ_API_KEY') || '';
 
 // Integrations
-const SHEETS_WEBHOOK_URL = Deno.env.get('SHEETS_WEBHOOK_URL') || Deno.env.get('VITE_SHEETS_API_URL') || '';
+const SHEETS_WEBHOOK_URL = Deno.env.get('SHEETS_WEBHOOK_URL') || '';
 const FACEBOOK_GROUP_ID = Deno.env.get('FACEBOOK_GROUP_ID') || '';
 const FACEBOOK_ACCESS_TOKEN = Deno.env.get('FACEBOOK_ACCESS_TOKEN') || '';
 const SENDPULSE_API_ID = Deno.env.get('SENDPULSE_API_ID') || '';
@@ -55,7 +55,7 @@ const TELEGRAM_BOT_TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN') || '';
 const TELEGRAM_ALLOWED_USERS = Deno.env.get('TELEGRAM_ALLOWED_USERS') || '';
 
 // Email
-const BREVO_API_KEY = Deno.env.get('BREVO_API_KEY') || Deno.env.get('SENDINBLUE_API_KEY') || '';
+const BREVO_API_KEY = Deno.env.get('BREVO_API_KEY') || '';
 const BREVO_LIST_ID = Deno.env.get('BREVO_LIST_ID') || '2';
 
 // Business
@@ -65,23 +65,37 @@ const FIRECRAWL_API_KEY = Deno.env.get('FIRECRAWL_API_KEY') || '';
 const AGENTOPS_API_KEY = Deno.env.get('AGENTOPS_API_KEY') || '';
 
 // === CORS Headers ===
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, apikey, Authorization, x-api-key',
-  'Access-Control-Max-Age': '86400',
-};
+const allowedOrigins = [
+  'https://dashboard.digitallydefined.online',
+  'https://digitallydefined.online',
+  'http://localhost:3000',
+  'http://localhost:5173',
+];
+
+function getCorsHeaders(origin: string | null) {
+  const headers: Record<string, string> = {
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, apikey, Authorization, x-api-key',
+    'Access-Control-Max-Age': '86400',
+  };
+  if (origin && allowedOrigins.includes(origin)) {
+    headers['Access-Control-Allow-Origin'] = origin;
+  } else {
+    headers['Access-Control-Allow-Origin'] = 'https://dashboard.digitallydefined.online';
+  }
+  return headers;
+}
 
 // === Helper Functions ===
-function sendResponse(status: number, data: any) {
+function sendResponse(status: number, data: any, origin: string | null = null) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: { ...getCorsHeaders(origin), 'Content-Type': 'application/json' },
   });
 }
 
-function sendError(status: number, message: string) {
-  return sendResponse(status, { error: message });
+function sendError(status: number, message: string, origin: string | null = null) {
+  return sendResponse(status, { error: message }, origin);
 }
 
 async function parseBody(req: Request): Promise<any> {
@@ -94,6 +108,40 @@ async function parseBody(req: Request): Promise<any> {
   } catch {
     return {};
   }
+}
+
+// === Rate Limiting ===
+const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const RATE_LIMIT_MAX_REQUESTS = 60;
+
+function applyRateLimit(clientIp: string): { status: number; body: any } | null {
+  const now = Date.now();
+  const bucket = rateLimitStore.get(clientIp);
+
+  if (!bucket || now > bucket.resetAt) {
+    rateLimitStore.set(clientIp, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return null;
+  }
+
+  if (bucket.count >= RATE_LIMIT_MAX_REQUESTS) {
+    const retryAfter = Math.max(1, Math.ceil((bucket.resetAt - now) / 1000));
+    return {
+      status: 429,
+      body: { error: 'Too many requests. Please try again shortly.' },
+    };
+  }
+
+  bucket.count += 1;
+  return null;
+}
+
+function getClientIp(req: Request): string {
+  const forwardedFor = req.headers.get('x-forwarded-for');
+  if (typeof forwardedFor === 'string' && forwardedFor.trim()) {
+    return forwardedFor.split(',')[0].trim();
+  }
+  return 'unknown';
 }
 
 // === Dashboard Data ===
@@ -245,9 +293,18 @@ async function handleAIChat(body: any): Promise<any> {
 
 // === Main Handler ===
 serve(async (req: Request): Promise<Response> => {
+  const origin = req.headers.get('origin');
+
   // CORS preflight
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: getCorsHeaders(origin) });
+  }
+
+  // Rate limiting
+  const clientIp = getClientIp(req);
+  const rateLimitResult = applyRateLimit(clientIp);
+  if (rateLimitResult) {
+    return sendResponse(rateLimitResult.status, rateLimitResult.body, origin);
   }
 
   const url = new URL(req.url);
@@ -262,7 +319,7 @@ serve(async (req: Request): Promise<Response> => {
       message: 'DigitallyDefined Edge Function running',
       timestamp: new Date().toISOString(),
       version: '1.0.0',
-    });
+    }, origin);
   }
 
   // Route: /api/hermes (main endpoint)
@@ -270,7 +327,7 @@ serve(async (req: Request): Promise<Response> => {
     // Authenticate
     const apiKey = req.headers.get('x-api-key') || req.headers.get('authorization') || '';
     if (apiKey.trim() !== API_KEY) {
-      return sendError(401, 'Unauthorized - Invalid or missing API key');
+      return sendError(401, 'Unauthorized - Invalid or missing API key', origin);
     }
 
     const body = await parseBody(req);
@@ -279,7 +336,7 @@ serve(async (req: Request): Promise<Response> => {
     // Dashboard action
     if (action === 'dashboard') {
       const data = await getDashboardData();
-      return sendResponse(200, data);
+      return sendResponse(200, data, origin);
     }
 
     // Automation list action
@@ -290,13 +347,49 @@ serve(async (req: Request): Promise<Response> => {
           { name: 'Social Media Cross-Post', status: 'active', lastRun: '5 hours ago' },
           { name: 'Email Lead Nurturing', status: 'paused', lastRun: '1 day ago' },
         ],
-      });
+      }, origin);
+    }
+
+    // Subscribe action (email signup)
+    if (action === 'subscribe') {
+      const email = body.email;
+      const name = body.name || '';
+      const source = body.source || 'website';
+      const tags = Array.isArray(body.tags) ? body.tags : [];
+
+      if (!email || typeof email !== 'string' || !email.includes('@')) {
+        return sendError(400, 'Valid email is required', origin);
+      }
+
+      // Log subscription (real Brevo integration would go here via BREVO_API_KEY)
+      console.log(`[EdgeFunc] Subscribe: ${email} (${name}) from ${source}`, { tags });
+
+      return sendResponse(200, {
+        success: true,
+        message: "You're on the list!",
+        data: { email, name, source, tags, subscribedAt: new Date().toISOString() },
+      }, origin);
+    }
+
+    // Contact form action
+    if (action === 'contact') {
+      const { name, email, message } = body;
+      if (!email || !message) {
+        return sendError(400, 'Email and message are required', origin);
+      }
+
+      console.log(`[EdgeFunc] Contact: ${name || 'Anonymous'} (${email}): ${message}`);
+
+      return sendResponse(200, {
+        success: true,
+        message: 'Message received. We will get back to you soon.',
+      }, origin);
     }
 
     // Vault sync action
     if (action === 'vault.sync' || action === 'sheets') {
       if (!SHEETS_WEBHOOK_URL) {
-        return sendError(503, 'SHEETS_WEBHOOK_URL not configured');
+        return sendError(503, 'SHEETS_WEBHOOK_URL not configured', origin);
       }
       try {
         const url = new URL(SHEETS_WEBHOOK_URL);
@@ -306,31 +399,31 @@ serve(async (req: Request): Promise<Response> => {
         const res = await fetch(url.toString(), {
           headers: { 'Cache-Control': 'no-store' },
         });
-        return sendResponse(200, await res.json());
+        return sendResponse(200, await res.json(), origin);
       } catch (err) {
-        return sendError(500, `Sheets sync failed: ${err.message}`);
+        return sendError(500, `Sheets sync failed: ${err.message}`, origin);
       }
     }
 
     // AI Chat (default)
     const aiResult = await handleAIChat(body);
-    return sendResponse(200, aiResult);
+    return sendResponse(200, aiResult, origin);
   }
 
   // Route: /api/sync
   if (path === '/api/sync' || path === '/sync') {
     const apiKey = req.headers.get('x-api-key') || '';
     if (apiKey.trim() !== API_KEY) {
-      return sendError(401, 'Unauthorized');
+      return sendError(401, 'Unauthorized', origin);
     }
     const data = await getDashboardData();
-    return sendResponse(200, { synced: true, data, timestamp: new Date().toISOString() });
+    return sendResponse(200, { synced: true, data, timestamp: new Date().toISOString() }, origin);
   }
 
   // Route: /api/vault
   if (path === '/api/vault' || path === '/vault') {
     if (!SHEETS_WEBHOOK_URL) {
-      return sendError(503, 'SHEETS_WEBHOOK_URL not configured');
+      return sendError(503, 'SHEETS_WEBHOOK_URL not configured', origin);
     }
     try {
       const url = new URL(SHEETS_WEBHOOK_URL);
@@ -340,9 +433,9 @@ serve(async (req: Request): Promise<Response> => {
       const res = await fetch(url.toString(), {
         headers: { 'Cache-Control': 'no-store' },
       });
-      return sendResponse(200, await res.json());
+      return sendResponse(200, await res.json(), origin);
     } catch (err) {
-      return sendError(500, `Vault sync failed: ${err.message}`);
+      return sendError(500, `Vault sync failed: ${err.message}`, origin);
     }
   }
 
@@ -354,7 +447,7 @@ serve(async (req: Request): Promise<Response> => {
         { name: 'Social Media Cross-Post', status: 'active' },
         { name: 'Email Lead Nurturing', status: 'paused' },
       ],
-    });
+    }, origin);
   }
 
   // Route: /api/models
@@ -366,7 +459,7 @@ serve(async (req: Request): Promise<Response> => {
         { id: 'mistral/mistral-small', name: 'Mistral Small', provider: 'Mistral' },
         { id: 'groq/llama3-8b', name: 'Llama 3 8B', provider: 'Groq' },
       ],
-    });
+    }, origin);
   }
 
   // Route: /api/routes (list all available routes)
@@ -380,9 +473,9 @@ serve(async (req: Request): Promise<Response> => {
         { path: '/api/models', method: 'GET', description: 'AI models' },
         { path: '/health', method: 'GET', description: 'Health check' },
       ],
-    });
+    }, origin);
   }
 
   // 404 for unknown routes
-  return sendError(404, `Route not found: ${path}`);
+  return sendError(404, `Route not found: ${path}`, origin);
 });
