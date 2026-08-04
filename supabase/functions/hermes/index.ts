@@ -1,470 +1,471 @@
-// supabase/functions/hermes/index.ts
-// DigitallyDefined OS - Unified AI Gateway with Puter.js Execution Layer
-
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { schemaPrompt, validateAgentOutput } from "../_shared/agent-schemas.ts";
 
-// CORS Headers inline
-function corsHeaders(origin: string) {
-  return {
-    'Access-Control-Allow-Origin': origin || '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, x-api-key',
-  };
+type JsonRecord = Record<string, unknown>;
+type Candidate = { provider: string; model: string; key: string; url: string };
+
+const corsHeaders = (origin = "") => ({
+  "Access-Control-Allow-Origin": origin || "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, x-api-key, x-user-id",
+  "Vary": "Origin",
+});
+
+const json = (body: unknown, status = 200, origin = "") =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json", ...corsHeaders(origin) },
+  });
+
+async function insertRow(table: string, payload: JsonRecord, upsert = false) {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error("Supabase database credentials are not available to the Edge Function");
+  }
+  const response = await fetch(`${supabaseUrl}/rest/v1/${table}${upsert ? "?on_conflict=email,source" : ""}`, {
+    method: "POST",
+    headers: {
+      "apikey": serviceRoleKey,
+      "Authorization": `Bearer ${serviceRoleKey}`,
+      "Content-Type": "application/json",
+      "Prefer": upsert ? "resolution=merge-duplicates,return=representation" : "return=representation",
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error(`Database write failed: ${response.status} ${await response.text()}`);
+  return response.json();
 }
 
-// === Registered Agents ===
-const AGENTS = {
-  task_planner: {
-    type: 'task_planner',
-    name: 'Task Planner',
-    description: 'Creates and manages task lists',
-    run: (inputData) => {
-      const tasks = inputData.tasks || [];
-      const plan = {
-        id: `plan-${Date.now()}`,
-        created: new Date().toISOString(),
-        tasks: tasks.map((t, i) => ({
-          id: i + 1,
-          title: t.title,
-          priority: t.priority || 'medium',
-          status: 'pending',
-          dueDate: t.dueDate || null,
-          tags: t.tags || []
-        })),
-        summary: `Created ${tasks.length} tasks`
-      };
-      return plan;
-    }
-  },
-  content_writer: {
-    type: 'content_writer',
-    name: 'Content Writer',
-    description: 'Generates content for various formats',
-    run: (inputData) => {
-      const content = {
-        id: `content-${Date.now()}`,
-        topic: inputData.topic,
-        format: inputData.format || 'markdown',
-        tone: inputData.tone || 'professional',
-        generated: new Date().toISOString(),
-        body: `Generated content for: ${inputData.topic}`,
-        tags: inputData.tags || []
-      };
-      return content;
-    }
-  },
-  workflow_builder: {
-    type: 'workflow_builder',
-    name: 'Workflow Builder',
-    description: 'Creates automation workflows',
-    run: (inputData) => {
-      const workflow = {
-        id: `workflow-${Date.now()}`,
-        name: inputData.name || 'New Workflow',
-        steps: inputData.steps || [],
-        created: new Date().toISOString(),
-        active: true
-      };
-      return workflow;
-    }
-  },
-  digital_organizer: {
-    type: 'digital_organizer',
-    name: 'Digital Organizer',
-    description: 'Organizes digital workspace',
-    run: (inputData) => {
-      const organization = {
-        id: `org-${Date.now()}`,
-        created: new Date().toISOString(),
-        files: inputData.fileCount || 0,
-        categories: {
-          plans: [],
-          content: [],
-          workflows: [],
-          other: []
-        },
-        recommendations: ['Review file structure', 'Archive old content', 'Organize by project']
-      };
-      return organization;
-    }
-  }
+const parseJsonReply = (reply: string) => {
+  const cleaned = reply
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+  return JSON.parse(cleaned);
 };
 
-// === Puter.js Workspace (In-memory for Edge Function) ===
-class PuterWorkspace {
-  constructor(userId) {
-    this.userId = userId;
-    this.workspaceId = `digitallydefined-${userId}`;
-    this.root = `/users/${userId}/digitallydefined`;
-    this.storage = new Map();
-  }
+const normalizeOpenRouterModel = (model: string) =>
+  model.replace(/^openrouter\//, "") || "openai/gpt-4o-mini";
 
-  async init() {
-    return { success: true, workspace: this.root };
-  }
+const normalizeGroqModel = (model: string) =>
+  model.replace(/^groq\//, "") || "llama-3.3-70b-versatile";
 
-  async writeFile(path, content) {
-    const fullPath = `${this.root}/${path}`;
-    this.storage.set(fullPath, content);
-    return { success: true, path: fullPath };
-  }
+const getCandidates = (): Candidate[] => {
+  const openRouterKey = Deno.env.get("OPENROUTER_API_KEY") || "";
+  const groqKey = Deno.env.get("GROQ_API_KEY") || "";
+  const preferred = Deno.env.get("AI_MODEL") || Deno.env.get("OMNIROUTE_MODEL") || "";
+  const candidates: Candidate[] = [];
 
-  async readFile(path) {
-    const fullPath = `${this.root}/${path}`;
-    return this.storage.get(fullPath) || null;
-  }
-
-  async listDir(path = '') {
-    const prefix = `${this.root}/${path}`;
-    return Array.from(this.storage.keys())
-      .filter(k => k.startsWith(prefix))
-      .map(k => k.replace(prefix, ''));
-  }
-
-  async setItem(key, value) {
-    this.storage.set(`${this.userId}/${key}`, value);
-  }
-
-  async getItem(key) {
-    return this.storage.get(`${this.userId}/${key}`) || null;
-  }
-
-  async runAgent(agentId, inputData) {
-    const agent = AGENTS[agentId];
-    if (!agent) throw new Error(`Agent ${agentId} not found. Available: ${Object.keys(AGENTS).join(', ')}`);
-    
-    const result = agent.run(inputData || {});
-    
-    // Save to history
-    await this.setItem(`agent_history/${agentId}`, {
-      lastRun: new Date().toISOString(),
-      input: inputData,
-      output: result
-    });
-    
-    return result;
-  }
-
-  async runWorkflow(workflowId, inputData) {
-    const workflow = await this.getItem(`workflows/${workflowId}`);
-    if (!workflow) throw new Error('Workflow not found');
-
-    const results = [];
-    for (const step of workflow.steps) {
-      try {
-        const stepResult = await this.executeStep(step, inputData);
-        results.push({ step: step.name, success: true, result: stepResult });
-        inputData = { ...inputData, [step.name]: stepResult };
-      } catch (e) {
-        results.push({ step: step.name, success: false, error: e.message });
-        break;
-      }
-    }
-    return { success: true, results, workflow };
-  }
-
-  async executeStep(step, inputData) {
-    switch (step.type) {
-      case 'write_file':
-        return await this.writeFile(step.path, step.content || inputData.content);
-      case 'read_file':
-        return await this.readFile(step.path);
-      case 'run_agent':
-        return await this.runAgent(step.agentId, inputData);
-      case 'generate':
-        return { generated: step.prompt, timestamp: new Date().toISOString() };
-      default:
-        throw new Error(`Unknown step type: ${step.type}`);
+  if (preferred && preferred !== "free") {
+    if (preferred.startsWith("groq/") && groqKey) {
+      candidates.push({
+        provider: "groq",
+        model: normalizeGroqModel(preferred),
+        key: groqKey,
+        url: "https://api.groq.com/openai/v1/chat/completions",
+      });
+    } else if (openRouterKey) {
+      candidates.push({
+        provider: "openrouter",
+        model: normalizeOpenRouterModel(preferred),
+        key: openRouterKey,
+        url: "https://openrouter.ai/api/v1/chat/completions",
+      });
     }
   }
-}
 
-serve(async (req) => {
-  // === CORS ===
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders('') });
-  }
-
-  // === API Keys ===
-  const DASHBOARD_API_KEY = "DigitallyDefined-OS-2026";
-  const AGNES_KEY = "sk-R4z...1RDw";
-  const OPENROUTER_KEY = "sk-or-...25b6";
-  const GROQ_KEY = "gsk_S8...XZOz";
-
-  // === Auth ===
-  const apiKey = (req.headers.get('x-api-key') || '').trim();
-  if (apiKey !== DASHBOARD_API_KEY) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-      status: 401,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders('') }
+  if (groqKey && !candidates.some((item) => item.provider === "groq")) {
+    candidates.push({
+      provider: "groq",
+      model: Deno.env.get("GROQ_MODEL_ID") || "llama-3.3-70b-versatile",
+      key: groqKey,
+      url: "https://api.groq.com/openai/v1/chat/completions",
     });
   }
 
-  // === Parse Body ===
-  let body = {};
-  try {
-    const text = await req.text();
-    body = text ? JSON.parse(text) : {};
-  } catch (e) {
-    return new Response(JSON.stringify({ error: 'Invalid JSON' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders('') }
+  if (openRouterKey && !candidates.some((item) => item.provider === "openrouter")) {
+    candidates.push({
+      provider: "openrouter",
+      model: Deno.env.get("OPENROUTER_MODEL_ID") || "openai/gpt-4o-mini",
+      key: openRouterKey,
+      url: "https://openrouter.ai/api/v1/chat/completions",
     });
   }
 
-  const action = body.action || '';
-  const origin = req.headers.get('origin') || '';
-  const userId = body.userId || 'anonymous';
+  return candidates;
+};
 
-  // Initialize Puter.js workspace
-  const workspace = new PuterWorkspace(userId);
-  await workspace.init();
+async function runAI(systemPrompt: string, userPrompt: string, jsonMode = false) {
+  const candidates = getCandidates();
+  if (!candidates.length) throw new Error("No AI provider is configured in Supabase secrets");
 
-  // === Dashboard Action ===
-  if (action === 'dashboard') {
-    const data = {
-      revenue: "$12,450",
-      leads: 156,
-      conversionRate: 0.248,
-      assetValue: 48000,
-      topAsset: "Email List",
-      communityGrowth: "+12%",
-      emailGrowth: "+8%",
-      churnRisk: "Low",
-      reviews: [{
-        name: "Sarah M.",
-        reviewText: "This dashboard changed my business! The automation features are incredible.",
-        sentiment: "positive",
-        date: "2024-01-15",
-        aiDraftedResponse: "Thank you Sarah! So glad the automation features are helping you scale.",
-      }],
-      campaigns: [
-        { name: "Authority Launch Sequence", openRate: "42%", clickRate: "18%" },
-        { name: "Evergreen Reputation Funnel", openRate: "38%", clickRate: "15%" },
-      ],
-      competitors: [
-        { name: "Competitor A", notes: "Similar target audience, different pricing" },
-        { name: "Competitor B", notes: "Stronger social presence, we lead in SEO" },
-      ],
-      email: { subscribers: 1284, openRate: "42%", clickRate: "18%", revenuePerCampaign: "$1,240" },
-      alerts: [{ type: "info", source: "System", message: "All automations running normally" }],
-      sourceHealth: {
-        googleMyBusiness: "Active",
-        facebook: "Active",
-        instagram: "Active",
-        email: "Active",
-      },
-      automations: [
-        { name: "Review Response Auto-Reply", status: "active", lastRun: "2 hours ago" },
-        { name: "Social Media Cross-Post", status: "active", lastRun: "5 hours ago" },
-        { name: "Email Lead Nurturing", status: "paused", lastRun: "1 day ago" },
-      ],
-      aiBrief: {
-        working: ["Email open rates above industry average", "Social engagement increasing"],
-        slipping: ["Review response time could be faster", "Content calendar needs updating"],
-        nextActions: ["Respond to pending reviews", "Schedule next week's social content", "Review email campaign performance"],
-      },
-      community: [
-        { name: "Rena Walker", date: "Mar 28, 2026", status: "Active" },
-        { name: "Angela Brooks", date: "Mar 31, 2026", status: "Onboarding" },
-      ],
-      puter: {
-        workspace: workspace.root,
-        files: await workspace.listDir(),
-        agents: Object.keys(AGENTS)
-      }
-    };
-    return new Response(JSON.stringify(data), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
-    });
-  }
-
-  // === Automation List Action ===
-  if (action === 'automation.list') {
-    return new Response(JSON.stringify({
-      automations: [
-        { name: "Review Response Auto-Reply", status: "active", lastRun: "2 hours ago" },
-        { name: "Social Media Cross-Post", status: "active", lastRun: "5 hours ago" },
-        { name: "Email Lead Nurturing", status: "paused", lastRun: "1 day ago" },
-      ],
-      puterWorkflows: await workspace.listDir('workflows')
-    }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
-    });
-  }
-
-  // === Status/Routes Action ===
-  if (action === 'status' || action === 'routes') {
-    return new Response(JSON.stringify({
-      ok: true,
-      status: "running",
-      timestamp: Date.now(),
-      routes: [
-        { action: "hermes", method: "POST", description: "AI chat gateway" },
-        { action: "dashboard", method: "POST", description: "Dashboard data" },
-        { action: "automation.list", method: "POST", description: "Automation list" },
-        { action: "puter.run_agent", method: "POST", description: "Run Puter.js agent" },
-        { action: "puter.run_workflow", method: "POST", description: "Run Puter.js workflow" },
-        { action: "puter.list_files", method: "POST", description: "List workspace files" },
-      ],
-      puter: {
-        workspace: workspace.root,
-        agents: Object.keys(AGENTS),
-        workflows: await workspace.listDir('workflows')
-      }
-    }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
-    });
-  }
-
-  // === Puter.js: Run Agent ===
-  if (action === 'puter.run_agent') {
-    const { agentId, inputData } = body;
+  let lastError = "";
+  for (const candidate of candidates) {
     try {
-      const result = await workspace.runAgent(agentId, inputData || {});
-      return new Response(JSON.stringify({
-        success: true,
-        agent: agentId,
-        result,
-        workspace: workspace.root
-      }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
-      });
-    } catch (e) {
-      return new Response(JSON.stringify({ error: e.message }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
-      });
-    }
-  }
-
-  // === Puter.js: Run Workflow ===
-  if (action === 'puter.run_workflow') {
-    const { workflowId, inputData } = body;
-    try {
-      const result = await workspace.runWorkflow(workflowId, inputData || {});
-      return new Response(JSON.stringify({
-        success: true,
-        workflow: workflowId,
-        result
-      }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
-      });
-    } catch (e) {
-      return new Response(JSON.stringify({ error: e.message }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
-      });
-    }
-  }
-
-  // === Puter.js: List Files ===
-  if (action === 'puter.list_files') {
-    const { path } = body;
-    const files = await workspace.listDir(path || '');
-    return new Response(JSON.stringify({
-      success: true,
-      workspace: workspace.root,
-      path: path || '/',
-      files
-    }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
-    });
-  }
-
-  // === AI Chat (Default) ===
-  const message = body.message || body.content || body.text || '';
-  const conversation = body.conversation || body.messages || [];
-  const context = body.context || {};
-
-  if (!message) {
-    return new Response(JSON.stringify({ error: 'Missing message' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
-    });
-  }
-
-  const systemPrompt = body.systemPrompt || `You are Hermes, the orchestrator of DigitallyDefined OS.
-You coordinate cognitive agents (Antigravity, Buzz, Groq, Agnes) and execute actions through Puter.js.
-Help the user manage their digital business, automations, and growth strategies.`;
-
-  // Try AI providers
-  const candidates = [
-    { model: "sapiens-ai/agnes-2.0-flash", key: AGNES_KEY, base: "https://api.agnes.sapiens.ai/v1/chat/completions", provider: "agnes" },
-    { model: "meta-llama/llama-3.3-70b-versatile", key: GROQ_KEY, base: "https://api.groq.com/openai/v1/chat/completions", provider: "groq" },
-    { model: "openai/gpt-4o-mini", key: OPENROUTER_KEY, base: "https://openrouter.ai/api/v1/chat/completions", provider: "openrouter" },
-  ].filter(c => c.key);
-
-  let reply = "";
-  let provider = "";
-  let model = null;
-  let error = "";
-
-  for (const c of candidates) {
-    try {
-      const res = await fetch(c.base, {
-        method: 'POST',
+      const response = await fetch(candidate.url, {
+        method: "POST",
         headers: {
-          'Authorization': `Bearer ${c.key}`,
-          'Content-Type': 'application/json',
-          ...(c.provider === 'openrouter' ? { 'HTTP-Referer': 'https://digitallydefined.online', 'X-Title': 'DigitallyDefined OS' } : {}),
+          "Authorization": `Bearer ${candidate.key}`,
+          "Content-Type": "application/json",
+          ...(candidate.provider === "openrouter"
+            ? { "HTTP-Referer": "https://digitallydefined.online", "X-Title": "DigitallyDefined" }
+            : {}),
         },
         body: JSON.stringify({
-          model: c.model,
+          model: candidate.model,
           messages: [
-            { role: 'system', content: systemPrompt },
-            ...conversation,
-            { role: 'user', content: message },
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
           ],
-          max_tokens: 4000,
-          temperature: 0.7,
+          temperature: jsonMode ? 0.35 : 0.7,
+          max_tokens: jsonMode ? 1400 : 4000,
+          ...(jsonMode && candidate.provider === "openrouter"
+            ? { response_format: { type: "json_object" } }
+            : {}),
         }),
         signal: AbortSignal.timeout(90000),
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        reply = data?.choices?.[0]?.message?.content || "";
-        if (reply) {
-          provider = c.provider;
-          model = c.model;
-          break;
-        }
-      } else {
-        error = `${c.provider}: HTTP ${res.status}`;
+      if (!response.ok) {
+        lastError = `${candidate.provider} HTTP ${response.status}: ${await response.text()}`;
+        continue;
       }
-    } catch (e) {
-      error = e.message || "Request failed";
+
+      const payload = await response.json();
+      const reply = payload?.choices?.[0]?.message?.content || "";
+      if (!reply) {
+        lastError = `${candidate.provider} returned an empty response`;
+        continue;
+      }
+
+      return { reply, provider: candidate.provider, model: candidate.model };
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
     }
   }
 
-  if (!reply) {
-    reply = error ? `AI request failed: ${error}` : "No AI provider configured";
-    provider = "error";
+  throw new Error(lastError || "All AI providers failed");
+}
+
+const agentPrompts: Record<string, { schema: string; system: string; user: (input: JsonRecord) => string }> = {
+  quiz: {
+    schema: "quiz",
+    system: `You are the Digital Superpower Quiz planner for DigitallyDefined.
+Classify the answers as Builder, Creator, Educator, Strategist, or Connector.
+Be direct, useful, privacy-first, and free of hype.
+Return only JSON:
+{"superpowerName":"Builder","superpowerDescription":"...","recommendedPathways":["...","...","..."],"confidenceScore":0.85}`,
+    user: (input) => `Quiz answers: ${JSON.stringify(input.answers || input)}`,
+  },
+  niche: {
+    schema: "niche",
+    system: `You are an AI-assisted niche discovery planner for DigitallyDefined.
+Evaluate a niche for faceless digital real estate. Do not invent search-volume statistics.
+Be explicit when recommendations require validation.
+Return only JSON:
+{"niche":"...","keywords":["..."],"demand":"High|Medium|Low","competition":"High|Medium|Low","recommendation":"..."}`,
+    user: (input) => `Analyze this topic or niche: ${String(input.query || input.niche || "")}`,
+  },
+  roadmap: {
+    schema: "roadmap",
+    system: `You create practical DigitallyDefined build roadmaps for Gen X women.
+Use a calm, direct tone. Avoid income promises. Give concrete, sequential actions.
+Return only JSON:
+{"steps":["...","...","...","..."],"estimatedTime":"...","tools":["...","..."],"nextAction":"..."}`,
+    user: (input) => `Create a personalized roadmap from this profile:
+${JSON.stringify({
+  name: input.name || "Builder",
+  superpower: input.superpower || "Builder",
+  answers: input.answers || {},
+  profile: input.profile || {},
+  goal: input.goal || "",
+})}`,
+  },
+  reputation: {
+    schema: "reputation",
+    system: `You evaluate demand and trust signals for a proposed digital niche.
+Do not claim live market research unless evidence is supplied in the input.
+Return only JSON:
+{"niche":"...","demandScore":7,"competitionScore":5,"reputationSignals":["..."],"recommendation":"..."}`,
+    user: (input) => `Evaluate this niche and supplied evidence: ${JSON.stringify(input)}`,
+  },
+  scorecard: {
+    schema: "scorecard",
+    system: `You interpret a deterministic niche scorecard for DigitallyDefined.
+Never change the supplied score or tier. Explain what the inputs mean for a faceless digital asset.
+Do not invent market data. Recommend small validation experiments before a full build.`,
+    user: (input) => `Interpret this scorecard result: ${JSON.stringify(input)}`,
+  },
+  "retirement-guide": {
+    schema: "retirement-guide",
+    system: `You explain retirement calculator results for educational planning.
+Do not provide individualized financial advice or guarantees. Identify assumptions and questions the user may want to review with a qualified professional.
+Explain how digital assets could supplement a plan without presenting projections as certain.`,
+    user: (input) => `Explain these calculator inputs and results: ${JSON.stringify(input)}`,
+  },
+  "asset-plan": {
+    schema: "asset-plan",
+    system: `You interpret a proposed faceless digital asset portfolio.
+Treat all yields and valuations as user-supplied scenarios, not verified forecasts.
+Identify assumptions, concentration risk, a sensible build order, and one next validation step.`,
+    user: (input) => `Interpret this proposed portfolio: ${JSON.stringify(input)}`,
+  },
+  "offer-architect": {
+    schema: "offer-architect",
+    system: `You are the internal DigitallyDefined Offer Architect.
+Build a structured offer for one funnel stage: lead_magnet, core_offer, authority_bundle, community, or recurring_revenue.
+The nested offer must follow the supplied stage requirements. Avoid hype and unsupported income claims.`,
+    user: (input) => `Create a schema-driven offer from this brief: ${JSON.stringify(input)}`,
+  },
+};
+
+async function runStructuredAgent(agentName: string, inputData: JsonRecord) {
+  const config = agentPrompts[agentName];
+  if (!config) throw new Error(`Unknown agent: ${agentName}`);
+  const result = await runAI(
+    `${config.system}\nReturn only JSON matching this schema:\n${schemaPrompt(config.schema)}`,
+    config.user(inputData),
+    true,
+  );
+  const data = parseJsonReply(result.reply);
+  const validation = validateAgentOutput(config.schema, data);
+  if (!validation.valid) throw new Error(`Invalid ${config.schema} output: ${validation.errors.join("; ")}`);
+  return { data, provider: result.provider, model: result.model, schema: config.schema };
+}
+
+function calculateWealth(input: JsonRecord) {
+  const currentAge = Number(input.currentAge || 52);
+  const retireAge = Number(input.retireAge || 67);
+  const currentSavings = Number(input.currentSavings || 120000);
+  const monthlyContribution = Number(input.monthlyContribution || 600);
+  const annualReturn = Number(input.annualReturn || 6) / 100;
+  const desiredIncome = Number(input.desiredIncome || 55000);
+  const socialSecurity = Number(input.socialSecurity || 24000);
+  const yearsToRetire = Math.max(0, retireAge - currentAge);
+  const targetNestEgg = Math.max(0, desiredIncome - socialSecurity) / 0.04;
+  const futureSavings = currentSavings * Math.pow(1 + annualReturn, yearsToRetire);
+  const monthlyRate = annualReturn / 12;
+  const periods = yearsToRetire * 12;
+  const factor = monthlyRate === 0
+    ? periods
+    : (Math.pow(1 + monthlyRate, periods) - 1) / monthlyRate;
+  const totalAtRetirement = futureSavings + monthlyContribution * factor;
+  const gap = Math.max(0, targetNestEgg - totalAtRetirement);
+  return {
+    targetNestEgg,
+    totalAtRetirement,
+    gap,
+    monthlyNeeded: factor > 0 ? gap / factor : 0,
+    isOnTrack: gap === 0,
+  };
+}
+
+const dashboardData = {
+  revenue: "$12,450",
+  leads: 156,
+  conversionRate: 0.248,
+  assetValue: 48000,
+  topAsset: "Email List",
+  communityGrowth: "+12%",
+  emailGrowth: "+8%",
+  churnRisk: "Low",
+  reviews: [],
+  campaigns: [],
+  competitors: [],
+  email: {},
+  alerts: [{ type: "info", source: "System", message: "Supabase backend is responding" }],
+  sourceHealth: { supabase: "Active" },
+  automations: [
+    { name: "Review Response Auto-Reply", status: "active", lastRun: "2 hours ago" },
+    { name: "Social Media Cross-Post", status: "active", lastRun: "5 hours ago" },
+    { name: "Email Lead Nurturing", status: "paused", lastRun: "1 day ago" },
+  ],
+  aiBrief: { working: [], slipping: [], nextActions: [] },
+  community: [],
+};
+
+serve(async (req) => {
+  const origin = req.headers.get("origin") || "";
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(origin) });
+  if (req.method !== "POST") return json({ error: "Method not allowed - use POST" }, 405, origin);
+
+  let body: JsonRecord;
+  try {
+    const text = await req.text();
+    body = text ? JSON.parse(text) : {};
+  } catch {
+    return json({ error: "Invalid JSON body" }, 400, origin);
   }
 
-  return new Response(JSON.stringify({
-    reply,
-    provider,
-    model,
-    success: !!reply,
-    error: error || null,
-    conversationUpdates: [],
-    dashboardSnapshotUpdate: context || null,
-    timestamp: Date.now(),
-    puter: {
-      workspace: workspace.root,
-      files: await workspace.listDir(),
-      agents: Object.keys(AGENTS)
+  const action = String(body.action || "").trim();
+  const publicAgentAction = action.startsWith("agent.");
+  const publicFormAction = ["subscribe", "contact", "quiz.complete", "public.chat"].includes(action);
+  const expectedKey = (Deno.env.get("DASHBOARD_API_KEY") || "").trim();
+  const providedKey = (req.headers.get("x-api-key") || req.headers.get("authorization") || "").trim();
+
+  if (!publicAgentAction && !publicFormAction && (!expectedKey || providedKey !== expectedKey)) {
+    return json({ error: "Unauthorized - Invalid or missing API key" }, 401, origin);
+  }
+
+  if (action === "subscribe") {
+    const email = String(body.email || "").trim().toLowerCase();
+    if (!email) return json({ error: "Email is required" }, 400, origin);
+    try {
+      await insertRow("website_leads", {
+        email,
+        name: String(body.name || "").trim() || null,
+        source: String(body.source || "website"),
+        tags: Array.isArray(body.tags) ? body.tags : [],
+        metadata: {},
+      }, true);
+      return json({ success: true, message: "You're on the list!" }, 200, origin);
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : String(error) }, 500, origin);
     }
-  }), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
-  });
+  }
+
+  if (action === "contact") {
+    const name = String(body.name || "").trim();
+    const email = String(body.email || "").trim().toLowerCase();
+    const message = String(body.message || "").trim();
+    if (!name || !email || !message) return json({ error: "Name, email, and message are required" }, 400, origin);
+    try {
+      await insertRow("contact_messages", { name, email, message, source: String(body.source || "contact-page") });
+      return json({ success: true, message: "Message sent" }, 200, origin);
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : String(error) }, 500, origin);
+    }
+  }
+
+  if (action === "quiz.complete") {
+    const name = String(body.name || "").trim();
+    const email = String(body.email || "").trim().toLowerCase();
+    const superpower = String(body.superpower || "").trim().toLowerCase();
+    if (!name || !email || !superpower) return json({ error: "Name, email, and superpower are required" }, 400, origin);
+    try {
+      await insertRow("website_leads", {
+        email,
+        name,
+        source: "digital-superpower-quiz",
+        tags: ["quiz-complete", `superpower-${superpower}`, "roadmap-requested"],
+        metadata: { superpower },
+      }, true);
+      const saved = await insertRow("quiz_roadmaps", {
+        email,
+        name,
+        superpower,
+        answers: body.answers || {},
+        roadmap: body.roadmap || {},
+        source: String(body.source || "digital-superpower-quiz"),
+      });
+      return json({ success: true, id: saved?.[0]?.id || null, superpower }, 200, origin);
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : String(error) }, 500, origin);
+    }
+  }
+
+  if (action === "public.chat") {
+    const message = String(body.message || "").trim().slice(0, 1200);
+    if (!message) return json({ error: "A message is required" }, 400, origin);
+    try {
+      const result = await runAI(
+        `You are the public DigitallyDefined planning guide for Gen X women.
+Explain faceless digital real estate, retirement planning concepts, niche validation, and the website tools in plain language.
+Do not promise income, present projections as guarantees, or provide individualized financial advice.
+Keep responses concise and end with one relevant next step inside the DigitallyDefined tools.`,
+        message,
+      );
+      return json({ success: true, reply: result.reply, provider: result.provider, model: result.model }, 200, origin);
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : String(error) }, 502, origin);
+    }
+  }
+
+  if (publicAgentAction) {
+    const aliases: Record<string, string> = {
+      quiz: "quiz",
+      "digital-superpower-quiz": "quiz",
+      niche: "niche",
+      "niche-keyword-discovery": "niche",
+      roadmap: "roadmap",
+      "roadmap-generator": "roadmap",
+      reputation: "reputation",
+      "reputation-intelligence": "reputation",
+      scorecard: "scorecard",
+      "scorecard-interpreter": "scorecard",
+      "retirement-guide": "retirement-guide",
+      "asset-plan": "asset-plan",
+      "offer-architect": "offer-architect",
+      "json-schema-generator": "offer-architect",
+      wealth: "wealth",
+      "digital-wealth-calculator": "wealth",
+    };
+    const requested = action.slice("agent.".length);
+    const agentName = aliases[requested];
+    if (!agentName) {
+      return json({ error: `Unknown agent action: ${action}`, availableAgents: Object.keys(aliases) }, 404, origin);
+    }
+
+    const inputData = (body.inputData && typeof body.inputData === "object"
+      ? body.inputData
+      : body.data && typeof body.data === "object"
+        ? body.data
+        : {}) as JsonRecord;
+
+    try {
+      if (agentName === "wealth") {
+        return json({ success: true, data: calculateWealth(inputData), provider: "local", model: null }, 200, origin);
+      }
+      const result = await runStructuredAgent(agentName, inputData);
+      return json({ success: true, ...result }, 200, origin);
+    } catch (error) {
+      return json({
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        agent: agentName,
+      }, 502, origin);
+    }
+  }
+
+  if (action === "dashboard") return json(dashboardData, 200, origin);
+  if (action === "automation.list") return json({ automations: dashboardData.automations }, 200, origin);
+  if (action === "status" || action === "routes") {
+    return json({
+      ok: true,
+      status: "running",
+      timestamp: Date.now(),
+      routes: ["subscribe", "contact", "quiz.complete", "public.chat", "dashboard", "automation.list", "agent.quiz", "agent.niche", "agent.roadmap", "agent.scorecard", "agent.retirement-guide", "agent.asset-plan", "agent.offer-architect", "agent.wealth", "agent.reputation", "chat"],
+    }, 200, origin);
+  }
+
+  const conversation = Array.isArray(body.conversation)
+    ? body.conversation
+    : Array.isArray(body.messages)
+      ? body.messages
+      : [];
+  const message = String(body.message || body.content || body.text || "").trim();
+  if (!message) return json({ error: "Missing or invalid message field" }, 400, origin);
+
+  try {
+    const result = await runAI(
+      String(body.systemPrompt || "You are the private DigitallyDefined operations assistant. Be concise, practical, and accurate."),
+      `${conversation.length ? `Conversation: ${JSON.stringify(conversation)}\n\n` : ""}${message}`,
+    );
+    return json({
+      reply: result.reply,
+      provider: result.provider,
+      model: result.model,
+      error: null,
+      conversationUpdates: [],
+      dashboardSnapshotUpdate: body.context || null,
+    }, 200, origin);
+  } catch (error) {
+    return json({
+      reply: "",
+      provider: "error",
+      model: null,
+      error: error instanceof Error ? error.message : String(error),
+    }, 502, origin);
+  }
 });
