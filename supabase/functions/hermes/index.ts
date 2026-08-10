@@ -428,6 +428,60 @@ Keep responses concise and end with one relevant next step inside the DigitallyD
     }
   }
 
+  // =============================================
+  // INTELLIGENCE ACTION HANDLER
+  // =============================================
+  if (action === "intelligence") {
+    const userId = String(body.userId || "").trim();
+    const answers = body.answers || {};
+
+    // Validate required fields
+    if (!userId || Object.keys(answers).length === 0) {
+      return json({
+        success: false,
+        error: "userId and answers are required"
+      }, 400, origin);
+    }
+
+    try {
+      // Step 1: Determine superpower from quiz answers
+      const quizResult = await runStructuredAgent("quiz", { answers });
+
+      if (!quizResult || !quizResult.data) {
+        throw new Error("Quiz analysis failed to return data");
+      }
+
+      // Step 2: Generate personalized roadmap based on superpower
+      const roadmapResult = await runStructuredAgent("roadmap", {
+        name: userId.split('@')[0] || "Builder",
+        superpower: quizResult.data.superpowerName?.toLowerCase() || "builder",
+        answers,
+        profile: {},
+        goal: "Build faceless digital real estate that supports retirement and creates a transferable family asset"
+      });
+
+      // Step 3: Return structured intelligence response
+      return json({
+        success: true,
+        data: {
+          superpower: quizResult.data.superpowerName,
+          superpowerDescription: quizResult.data.superpowerDescription || "",
+          recommendations: quizResult.data.recommendedPathways || [],
+          confidenceScore: quizResult.data.confidenceScore || 0.85,
+          roadmap: roadmapResult.success ? roadmapResult.data : null,
+          rawQuizResult: quizResult.data
+        }
+      }, 200, origin);
+
+    } catch (error) {
+      console.error("[intelligence] Error:", error);
+      return json({
+        success: false,
+        error: error instanceof Error ? error.message : String(error)
+      }, 500, origin);
+    }
+  }
+
   if (action === "dashboard") return json(dashboardData, 200, origin);
   if (action === "automation.list") return json({ automations: dashboardData.automations }, 200, origin);
   if (action === "status" || action === "routes") {
@@ -435,7 +489,7 @@ Keep responses concise and end with one relevant next step inside the DigitallyD
       ok: true,
       status: "running",
       timestamp: Date.now(),
-      routes: ["subscribe", "contact", "quiz.complete", "public.chat", "dashboard", "automation.list", "agent.quiz", "agent.niche", "agent.roadmap", "agent.scorecard", "agent.retirement-guide", "agent.asset-plan", "agent.offer-architect", "agent.wealth", "agent.reputation", "chat"],
+      routes: ["subscribe", "contact", "quiz.complete", "public.chat", "dashboard", "automation.list", "agent.quiz", "agent.niche", "agent.roadmap", "agent.scorecard", "agent.retirement-guide", "agent.asset-plan", "agent.offer-architect", "agent.wealth", "agent.reputation", "intelligence", "chat"],
     }, 200, origin);
   }
 
