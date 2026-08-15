@@ -1,0 +1,14 @@
+# Supabase project configuration
+# Hermes Optimization Loop — scheduled functions (daily loop + weekly report).
+
+project_id = "dijjlppdljpcgyoakdnq"
+
+[functions.optimization-loop]
+verify_jwt = false
+# Daily optimization loop: cluster + persist optimization_signals → user_clusters
+schedule = "0 5 * * *"
+
+[functions.optimization-loop-weekly]
+verify_jwt = false
+# Weekly report: invoke optimization-loop with { "mode": "weekly" }
+schedule = "0 6 * * 1"
