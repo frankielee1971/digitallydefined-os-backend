@@ -1,29 +1,31 @@
 /**
  * Buzz Agent Registry
- * Maps agent keys to their implementations
+ * Maps agent keys to their implementations.
+ *
+ * NOTE: The previous version imported from per-agent subfolders
+ * (./digital-superpower-quiz/agent.js etc.) that do not exist in this repo.
+ * This registry now wires to the real, implemented agents in this backend.
  */
 
-import { quizAgent } from './digital-superpower-quiz/agent.js';
-import { reputationIntelligence } from './reputation-intelligence/agent.js';
-import { roadmapGenerator } from './roadmap-generator/agent.js';
-import { aiRankandRentBuilder } from './ai-rankand-rent-builder/agent.js';
-import { contentRepurposer } from './content-repurposer/agent.js';
-import { nicheKeywordDiscovery } from './niche-keyword-discovery/agent.js';
-import { jsonSchemaGenerator } from './json-schema-generator/agent.js';
-import { digitalWealthCalculator } from './digital-wealth-calculator/agent.js';
-import { facebookCommunityAgent } from './facebook-community-agent/agent.js';
+import { digitalSuperpowerAgent } from './digitalSuperpowerAgent.js';
+import { roadmapAgent } from './roadmapAgent.js';
+import { audienceInsightAgent } from './audienceInsightAgent.js';
+import { competitionAnalyzer } from './competitionAnalyzer.js';
+import { trendAnalyzer } from './trendAnalyzer.js';
+import { opportunityScanner } from './opportunityScanner.js';
+import { hermesBrandBuilderPrompt } from './hermesBrandBuilder.js';
+import { hermesQualityAssurance } from './hermesQualityAssurance.js';
 
 export const agentRegistry = {
   // Core agents
-  'digital-superpower-quiz': quizAgent,
-  'reputation-intelligence': reputationIntelligence,
-  'roadmap-generator': roadmapGenerator,
-  'ai-rankand-rent-builder': aiRankandRentBuilder,
-  'content-repurposer': contentRepurposer,
-  'niche-keyword-discovery': nicheKeywordDiscovery,
-  'json-schema-generator': jsonSchemaGenerator,
-  'digital-wealth-calculator': digitalWealthCalculator,
-  'facebook-community-agent': facebookCommunityAgent,
+  'digital-superpower-quiz': digitalSuperpowerAgent,
+  'roadmap-generator': roadmapAgent,
+  'audience-insight': audienceInsightAgent,
+  'competition-analyzer': competitionAnalyzer,
+  'trend-analyzer': trendAnalyzer,
+  'opportunity-scanner': opportunityScanner,
+  'hermes-brand-builder': hermesBrandBuilderPrompt,
+  'hermes-quality-assurance': hermesQualityAssurance,
 };
 
 /**

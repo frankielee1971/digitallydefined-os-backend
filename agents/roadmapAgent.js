@@ -20,12 +20,17 @@ const ROADMAP_SCHEMA = {
   estimatedTime: 'string',
   tools: 'array',
   nextAction: 'string',
+  profitabilityScore: 'number',
+  competitionLevel: 'string',
+  trendStrength: 'string',
+  nicheViability: 'string',
+  aiTools: 'array',
 };
 
-const SYSTEM_PROMPT = `You are Hermes, the Digital Roadmap Architect for DigitallyDefined.\n\nYour job:\n- Analyze the user's digital superpower profile\n- Recommend faceless digital real estate assets (rank-and-rent, templates, content libraries, micro-SaaS, communities)\n- Build a step-by-step build sequence\n- Follow the required JSON schema exactly\n- Return valid JSON only`;
+const SYSTEM_PROMPT = `You are Hermes, the Digital Roadmap Architect for DigitallyDefined.\n\nYour job:\n- Analyze the user's digital superpower profile\n- Recommend faceless digital real estate assets (rank-and-rent, templates, content libraries, micro-SaaS, communities)\n- Build a step-by-step build sequence that accounts for all supplied market signals (scorecard, competition, trends, viability, audience, opportunity gaps, privacy, energy, burnout, AI tools)\n- Follow the required JSON schema exactly\n- Return valid JSON only`;
 
 function buildPrompt(profile) {
-  return `Generate a personalized faceless digital real estate roadmap.\n\nSuperpower: ${profile.superpowerName}\nPersona: ${profile.persona}\nStrengths: ${profile.strengths.join(', ')}\nBlindspots: ${profile.blindspots.join(', ')}\nBusiness Model: ${profile.businessModel}\nRecommended Pathways: ${profile.recommendedPathways.join(', ')}\n\nReturn JSON with exactly these fields:\n- steps: array of 5-7 actionable build steps as strings\n- estimatedTime: total timeframe string (e.g., "4-6 weeks")\n- tools: array of recommended tool names\n- nextAction: the single most important next action\n\nFocus on building profitable, faceless digital assets that work on autopilot.`;
+  return `Generate a personalized faceless digital real estate roadmap.\n\nSuperpower: ${profile.superpowerName}\nPersona: ${profile.persona}\nStrengths: ${profile.strengths?.join(', ') || ''}\nBlindspots: ${profile.blindspots?.join(', ') || ''}\nBusiness Model: ${profile.businessModel}\nRecommended Pathways: ${profile.recommendedPathways?.join(', ') || ''}\n\nMarket signals to incorporate:\n- Profitability score (0-100): ${profile.profitabilityScore ?? 'N/A'}\n- Competition level: ${profile.competitionLevel ?? 'N/A'}\n- Trend strength: ${profile.trendStrength ?? 'N/A'}\n- Niche viability: ${profile.nicheViability ?? 'N/A'}\n- Audience insight: ${JSON.stringify(profile.audienceInsight ?? {})}\n- Opportunity gaps: ${JSON.stringify(profile.opportunityGaps ?? [])}\n- Privacy needs: ${JSON.stringify(profile.privacyNeeds ?? {})}\n- Energy level: ${profile.energyLevel ?? 'N/A'}\n- Burnout risk: ${profile.burnoutRisk ?? 'N/A'}\n- AI tools: ${JSON.stringify(profile.aiTools ?? [])}\n\nReturn JSON with exactly these fields:\n- steps: array of 5-7 actionable build steps as strings\n- estimatedTime: total timeframe string (e.g., "4-6 weeks")\n- tools: array of recommended tool names\n- aiTools: array of recommended AI tools\n- profitabilityScore: number from 0-100\n- competitionLevel: string\n- trendStrength: string\n- nicheViability: string\n- nextAction: the single most important next action\n\nFocus on building profitable, faceless digital assets that work on autopilot.`;
 }
 
 // Hardcoded fallbacks per persona (used when LLM/API is unavailable)
@@ -76,6 +81,11 @@ export async function roadmapAgent(superpowerProfile) {
         steps: parsed.steps,
         estimatedTime: parsed.estimatedTime || '',
         tools: parsed.tools || [],
+        aiTools: parsed.aiTools || parsed.tools || [],
+        profitabilityScore: Number(parsed.profitabilityScore) || 0,
+        competitionLevel: parsed.competitionLevel || 'unknown',
+        trendStrength: parsed.trendStrength || 'unknown',
+        nicheViability: parsed.nicheViability || 'unknown',
         nextAction: parsed.nextAction || '',
       };
     }

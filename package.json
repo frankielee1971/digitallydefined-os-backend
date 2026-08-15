@@ -2,6 +2,7 @@
   "name": "digitallydefined-backend",
   "version": "1.0.0",
   "description": "DigitallyDefined API Backend - Powers the website and dashboard with Hermes AI integration",
+  "type": "module",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
@@ -10,6 +11,7 @@
   "dependencies": {
     "express": "^4.18.2",
     "cors": "^2.8.5",
-    "dotenv": "^16.3.1"
+    "dotenv": "^16.3.1",
+    "@supabase/supabase-js": "^2.45.0"
   }
 }

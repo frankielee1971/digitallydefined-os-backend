@@ -18,8 +18,30 @@ router.post("/", async (req, res) => {
     // Run full intelligence pipeline
     const intelligence = await runIntelligencePipeline(answers);
 
-    // Store quiz results
-    await supabase.from("quiz_results").insert({
+    // Guarded inserts: a missing table never aborts the response (integration-friendly).
+    const guardInsert = async (table, payload) => {
+      try {
+        await supabase.from(table).insert(payload);
+      } catch (e) {
+        console.warn(`[intelligence] Skipped store to "${table}":`, e?.message || e);
+      }
+    };
+
+    // Store superpower profile
+    await guardInsert("superpower_profiles", {
+      user_id: userId,
+      superpower_name: intelligence.superpowerName,
+      persona: intelligence.persona,
+      strengths: intelligence.strengths,
+      blindspots: intelligence.blindspots,
+      business_model: intelligence.businessModel,
+      recommended_pathways: intelligence.recommendedPathways,
+      confidence_score: intelligence.confidenceScore,
+      data: intelligence
+    });
+
+    // Store quiz results (legacy shape)
+    await guardInsert("quiz_results", {
       user_id: userId,
       answers,
       superpower: intelligence.superpower,
@@ -30,31 +52,49 @@ router.post("/", async (req, res) => {
     });
 
     // Store roadmap
-    await supabase.from("quiz_roadmaps").insert({
+    await guardInsert("quiz_roadmaps", {
       user_id: userId,
       roadmap: intelligence.roadmap
     });
 
+    // Store intelligence aggregate
+    await guardInsert("intelligence_results", {
+      user_id: userId,
+      data: intelligence
+    });
+
+    // Store niche scoring
+    if (intelligence.profitabilityScore != null) {
+      await guardInsert("niche_scores", {
+        user_id: userId,
+        profitability_score: intelligence.profitabilityScore,
+        competition_level: intelligence.competitionLevel,
+        trend_strength: intelligence.trendStrength,
+        niche_viability: intelligence.nicheViability,
+        data: intelligence
+      });
+    }
+
     // Store trends
-    await supabase.from("trends").insert({
+    await guardInsert("trends", {
       user_id: userId,
       data: intelligence.trends
     });
 
     // Store competition
-    await supabase.from("competition").insert({
+    await guardInsert("competition", {
       user_id: userId,
       data: intelligence.competition
     });
 
     // Store opportunities
-    await supabase.from("opportunities").insert({
+    await guardInsert("opportunities", {
       user_id: userId,
       data: intelligence.opportunities
     });
 
     // Store audience insights
-    await supabase.from("audience_insights").insert({
+    await guardInsert("audience_insights", {
       user_id: userId,
       data: intelligence.audience
     });

@@ -8,6 +8,12 @@
 
 import { hermesBrandBuilderPrompt } from './hermesBrandBuilder.js';
 import { hermesQualityAssurance } from './hermesQualityAssurance.js';
+import { digitalSuperpowerAgent } from './digitalSuperpowerAgent.js';
+import { roadmapAgent } from './roadmapAgent.js';
+import { audienceInsightAgent } from './audienceInsightAgent.js';
+import { competitionAnalyzer } from './competitionAnalyzer.js';
+import { trendAnalyzer } from './trendAnalyzer.js';
+import { opportunityScanner } from './opportunityScanner.js';
 
 /**
  * Agent Registry
@@ -33,10 +39,52 @@ export const agents = {
    */
   hermes_quality_assurance: hermesQualityAssurance,
 
-  // Future agents can be added here:
-  // hermes_main: { ... },
-  // hermes_researcher: { ... },
-  // hermes_writer: { ... },
+  /**
+   * Core intelligence agents — wired into the orchestrator, quiz API, and
+   * intelligence pipeline.
+   */
+  digital_superpower: {
+    name: "Digital Superpower",
+    description: "Interprets quiz answers and returns the user's superpower profile plus a personalized roadmap.",
+    fn: digitalSuperpowerAgent,
+    category: "intelligence",
+    version: "1.0.0"
+  },
+  roadmap: {
+    name: "Roadmap",
+    description: "Generates a faceless digital real estate roadmap from a superpower profile and market signals.",
+    fn: roadmapAgent,
+    category: "intelligence",
+    version: "1.0.0"
+  },
+  audience_insight: {
+    name: "Audience Insight",
+    description: "Extracts audience pain points, desires, motivations, and buying triggers.",
+    fn: audienceInsightAgent,
+    category: "intelligence",
+    version: "1.0.0"
+  },
+  competition_analyzer: {
+    name: "Competition Analyzer",
+    description: "Evaluates competitors, strengths, weaknesses, and positioning.",
+    fn: competitionAnalyzer,
+    category: "intelligence",
+    version: "1.0.0"
+  },
+  trend_analyzer: {
+    name: "Trend Analyzer",
+    description: "Analyzes niche trends, rising topics, and platform momentum.",
+    fn: trendAnalyzer,
+    category: "intelligence",
+    version: "1.0.0"
+  },
+  opportunity_scanner: {
+    name: "Opportunity Scanner",
+    description: "Identifies gaps, underserved audiences, and unmet needs.",
+    fn: opportunityScanner,
+    category: "intelligence",
+    version: "1.0.0"
+  },
 };
 
 /**

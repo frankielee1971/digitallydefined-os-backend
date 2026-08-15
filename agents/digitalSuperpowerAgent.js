@@ -134,6 +134,17 @@ export async function digitalSuperpowerAgent(input = {}) {
     estimatedTime: roadmap.estimatedTime,
     tools: roadmap.tools,
     nextAction: roadmap.nextAction,
+    // Fields roadmapAgent consumes to tailor the build sequence to the user + market signals.
+    profitabilityScore: input.profitabilityScore ?? null,
+    competitionLevel: input.competitionLevel ?? null,
+    trendStrength: input.trendStrength ?? null,
+    nicheViability: input.nicheViability ?? null,
+    audienceInsight: input.audienceInsight ?? null,
+    opportunityGaps: input.opportunityGaps ?? [],
+    privacyNeeds: input.privacyNeeds ?? null,
+    energyLevel: input.energyLevel ?? null,
+    burnoutRisk: input.burnoutRisk ?? null,
+    aiTools: input.aiTools ?? [],
   };
 }
 

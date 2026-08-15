@@ -171,8 +171,9 @@ Return only JSON:
     schema: "roadmap",
     system: `You create practical DigitallyDefined build roadmaps for Gen X women.
 Use a calm, direct tone. Avoid income promises. Give concrete, sequential actions.
+Use all supplied market signals (scorecard profitability, competition, trend strength, viability, audience, opportunity gaps, privacy needs, energy, burnout risk, AI tools) to tailor the plan.
 Return only JSON:
-{"steps":["...","...","...","..."],"estimatedTime":"...","tools":["...","..."],"nextAction":"..."}`,
+{"steps":["...","...","...","..."],"estimatedTime":"...","tools":["...","..."],"aiTools":["...","..."],"profitabilityScore":0,"competitionLevel":"...","trendStrength":"...","nicheViability":"...","nextAction":"..."}`,
     user: (input) => `Create a personalized roadmap from this profile:
 ${JSON.stringify({
   name: input.name || "Builder",
@@ -180,6 +181,16 @@ ${JSON.stringify({
   answers: input.answers || {},
   profile: input.profile || {},
   goal: input.goal || "",
+  profitabilityScore: input.profitabilityScore ?? null,
+  competitionLevel: input.competitionLevel ?? null,
+  trendStrength: input.trendStrength ?? null,
+  nicheViability: input.nicheViability ?? null,
+  audienceInsight: input.audienceInsight ?? null,
+  opportunityGaps: input.opportunityGaps ?? [],
+  privacyNeeds: input.privacyNeeds ?? null,
+  energyLevel: input.energyLevel ?? null,
+  burnoutRisk: input.burnoutRisk ?? null,
+  aiTools: input.aiTools ?? [],
 })}`,
   },
   reputation: {
@@ -232,6 +243,70 @@ async function runStructuredAgent(agentName: string, inputData: JsonRecord) {
   const validation = validateAgentOutput(config.schema, data);
   if (!validation.valid) throw new Error(`Invalid ${config.schema} output: ${validation.errors.join("; ")}`);
   return { data, provider: result.provider, model: result.model, schema: config.schema };
+}
+
+async function guardInsert(table: string, payload: JsonRecord) {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  if (!supabaseUrl || !serviceRoleKey) return;
+  try {
+    await fetch(`${supabaseUrl}/rest/v1/${table}`, {
+      method: "POST",
+      headers: {
+        "apikey": serviceRoleKey,
+        "Authorization": `Bearer ${serviceRoleKey}`,
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal",
+      },
+      body: JSON.stringify(payload),
+    });
+  } catch (err) {
+    console.warn(`[intelligence] Skipped store to "${table}":`, err instanceof Error ? err.message : String(err));
+  }
+}
+
+// Deterministic market analysers (mirror the Node backend agents so the edge
+// intelligence endpoint can aggregate all six analyses without extra AI keys).
+function analyzeAudience(niche: string) {
+  return {
+    niche,
+    painPoints: ["Overwhelm from too much information", "Not knowing where to start", "Fear of choosing the wrong niche", "Confusion about tech setup"],
+    desires: ["Clarity", "Confidence", "A simple roadmap", "Fast wins"],
+    motivations: ["Freedom", "Flexibility", "Extra income", "Creative expression"],
+    buyingTriggers: ["Clear step-by-step guidance", "Fast setup", "Beginner-friendly tools", "Proof of results"],
+  };
+}
+
+function analyzeCompetition(niche: string) {
+  return {
+    niche,
+    topCompetitors: [
+      { name: "Competitor A", strengths: ["Strong brand", "Consistent publishing", "Clear offer"], weaknesses: ["High pricing", "Slow response time"] },
+      { name: "Competitor B", strengths: ["Great community", "High engagement"], weaknesses: ["Weak onboarding", "No automation"] },
+    ],
+    positioningInsights: ["Most competitors focus on beginners", "Few competitors offer automation-ready systems", "Opportunity to differentiate with simplicity + speed"],
+    recommendedActions: ["Position yourself as the fast, simple alternative", "Create a frictionless onboarding flow", "Offer a micro-offer competitors don't have"],
+  };
+}
+
+function analyzeTrends(niche: string) {
+  return {
+    niche,
+    risingTopics: [`${niche} beginner frameworks`, `${niche} automation workflows`, `${niche} micro-offers`, `${niche} audience building`],
+    platformTrends: ["Short-form video growth", "Newsletter revival", "AI-assisted content creation", "Community-driven learning"],
+    searchMomentum: { last30Days: "Moderate growth", last90Days: "Strong upward trend", prediction: "High opportunity" },
+    recommendedActions: ["Create 3 pillar content pieces around rising topics", "Publish weekly short-form content", "Build a simple lead magnet", "Start a newsletter"],
+  };
+}
+
+function analyzeOpportunities(niche: string) {
+  return {
+    niche,
+    gaps: ["No simple beginner roadmap", "No automation-ready templates", "No micro-offers for fast wins"],
+    underservedAudiences: ["Busy professionals", "Moms building digital businesses", "Creators who hate tech complexity"],
+    unmetNeeds: ["Clear step-by-step guidance", "Fast setup systems", "Automation without overwhelm"],
+    recommendedOpportunities: ["Create a beginner-friendly starter kit", "Build a 1-hour automation setup", "Offer a micro-offer that solves one painful problem"],
+  };
 }
 
 function calculateWealth(input: JsonRecord) {
@@ -446,33 +521,86 @@ Keep responses concise and end with one relevant next step inside the DigitallyD
     try {
       // Step 1: Determine superpower from quiz answers
       const quizResult = await runStructuredAgent("quiz", { answers });
-
       if (!quizResult || !quizResult.data) {
         throw new Error("Quiz analysis failed to return data");
       }
 
-      // Step 2: Generate personalized roadmap based on superpower
+      const superpowerName = quizResult.data.superpowerName || "Builder";
+      const niche = String(body.niche || superpowerName || "digital business");
+
+      // Step 2: Generate personalized roadmap, passing all market signals
+      const marketSignals: JsonRecord = {
+        profitabilityScore: body.profitabilityScore ?? null,
+        competitionLevel: body.competitionLevel ?? null,
+        trendStrength: body.trendStrength ?? null,
+        nicheViability: body.nicheViability ?? null,
+        audienceInsight: body.audienceInsight ?? null,
+        opportunityGaps: body.opportunityGaps ?? [],
+        privacyNeeds: body.privacyNeeds ?? null,
+        energyLevel: body.energyLevel ?? null,
+        burnoutRisk: body.burnoutRisk ?? null,
+        aiTools: body.aiTools ?? [],
+      };
+
       const roadmapResult = await runStructuredAgent("roadmap", {
         name: userId.split('@')[0] || "Builder",
-        superpower: quizResult.data.superpowerName?.toLowerCase() || "builder",
+        superpower: superpowerName.toLowerCase() || "builder",
         answers,
         profile: {},
-        goal: "Build faceless digital real estate that supports retirement and creates a transferable family asset"
+        goal: "Build faceless digital real estate that supports retirement and creates a transferable family asset",
+        ...marketSignals,
       });
 
-      // Step 3: Return structured intelligence response
-      return json({
-        success: true,
-        data: {
-          superpower: quizResult.data.superpowerName,
-          superpowerDescription: quizResult.data.superpowerDescription || "",
-          recommendations: quizResult.data.recommendedPathways || [],
-          confidenceScore: quizResult.data.confidenceScore || 0.85,
-          roadmap: roadmapResult.success ? roadmapResult.data : null,
-          rawQuizResult: quizResult.data
-        }
-      }, 200, origin);
+      // Step 3: Aggregate the remaining four analyses
+      const audience = analyzeAudience(niche);
+      const competition = analyzeCompetition(niche);
+      const trends = analyzeTrends(niche);
+      const opportunities = analyzeOpportunities(niche);
 
+      const intelligenceData: JsonRecord = {
+        superpower: superpowerName,
+        superpowerDescription: quizResult.data.superpowerDescription || "",
+        recommendations: quizResult.data.recommendedPathways || [],
+        confidenceScore: quizResult.data.confidenceScore || 0.85,
+        roadmap: roadmapResult.data || null,
+        ...marketSignals,
+        audience,
+        competition,
+        trends,
+        opportunities,
+        niche,
+        rawQuizResult: quizResult.data,
+      };
+
+      // Step 4: Persist (guarded) — superpower profile, roadmap, intelligence,
+      // niche scoring, and trend data.
+      await guardInsert("superpower_profiles", {
+        user_id: userId,
+        superpower_name: superpowerName,
+        roadmap: intelligenceData.roadmap,
+        data: intelligenceData,
+      });
+      await guardInsert("quiz_roadmaps", {
+        user_id: userId,
+        superpower: superpowerName,
+        answers,
+        roadmap: intelligenceData.roadmap,
+        source: "intelligence",
+      });
+      await guardInsert("intelligence_results", { user_id: userId, data: intelligenceData });
+      if (intelligenceData.profitabilityScore != null) {
+        await guardInsert("niche_scores", {
+          user_id: userId,
+          profitability_score: intelligenceData.profitabilityScore,
+          competition_level: intelligenceData.competitionLevel,
+          trend_strength: intelligenceData.trendStrength,
+          niche_viability: intelligenceData.nicheViability,
+          data: intelligenceData,
+        });
+      }
+      await guardInsert("trends", { user_id: userId, data: trends });
+
+      return json({ success: true, data: intelligenceData }, 200, origin);
     } catch (error) {
       console.error("[intelligence] Error:", error);
       return json({

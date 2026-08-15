@@ -24,6 +24,32 @@
       ]
     }
   ],
+  "rewrites": [
+    {
+      "source": "/api/intelligence(.*)",
+      "destination": "/src/index"
+    },
+    {
+      "source": "/api/quiz(.*)",
+      "destination": "/src/index"
+    },
+    {
+      "source": "/api/superpower(.*)",
+      "destination": "/src/index"
+    },
+    {
+      "source": "/api/roadmap(.*)",
+      "destination": "/src/index"
+    },
+    {
+      "source": "/api/scorecard(.*)",
+      "destination": "/src/index"
+    },
+    {
+      "source": "/health",
+      "destination": "/src/index"
+    }
+  ],
   "crons": [
     {
       "path": "/api/cron/sellable",
