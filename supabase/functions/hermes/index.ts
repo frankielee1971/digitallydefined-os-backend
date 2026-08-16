@@ -612,6 +612,49 @@ Keep responses concise and end with one relevant next step inside the DigitallyD
 
   if (action === "dashboard") return json(dashboardData, 200, origin);
   if (action === "automation.list") return json({ automations: dashboardData.automations }, 200, origin);
+   if (action === "personalize") {
+     const result = await runOptimizationLoop({ signals: body.signals || [] });
+     return json({ success: true, data: result.personalization }, 200, origin);
+   }
+   if (action === "events") {
+     const { guardInsert } = await import('../lib/persist.js');
+     const events = Array.isArray(body.events) ? body.events : [];
+     let saved = 0;
+     for (const e of events) {
+       const row = await guardInsert('optimization_signals', {
+         user_id: body.userId || null,
+         event: e?.event || 'page',
+         page: e?.page || null,
+         payload: e || {},
+       });
+       if (row?.ok !== false) saved += 1;
+     }
+     return json({ success: true, ingested: saved }, 200, origin);
+   }
+   if (action === "optimization.loop") {
+     const signals = body.signals || [];
+     const loop = await runOptimizationLoop({ signals });
+     await guardInsert('personalization', { user_id: body.userId || null, data: loop.personalization });
+     await guardInsert('user_clusters', { user_id: body.userId || null, cluster_key: loop.clusters[0]?.key || 'general', cluster: loop.clusters[0] || {} });
+     return json({ success: true, clusters: loop.clusters, signalCount: loop.signals.length }, 200, origin);
+   }
+   if (action === "optimization.weekly") {
+     const signals = await (async () => {
+       const url = Deno.env.get("SUPABASE_URL") || "";
+       const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+       if (!url || !key) return [];
+       try {
+         const res = await fetch(`${url}/rest/v1/optimization_signals?select=*&limit=5000`, {
+           headers: { apikey: key, Authorization: `Bearer ${key}` });
+         return res.ok ? await res.json() : [];
+       } catch { return []; }
+     })();
+     const period = new Date().toISOString().slice(0, 10);
+     const report = { period, signalCount: signals.length, generatedAt: new Date().toISOString() };
+     await insertRow('weekly_reports', { period, report });
+     return json({ success: true, period, report }, 200, origin);
+   }
+   if (action === "dashboard") return json(dashboardData, 200, origin);
   if (action === "status" || action === "routes") {
     return json({
       ok: true,

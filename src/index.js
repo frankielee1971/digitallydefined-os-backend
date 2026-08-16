@@ -7,9 +7,9 @@ import express from "express";
 import cors from "cors";
 import "dotenv/config";
 
-import quizHandler from "../api/quiz/index.js";
-import intelligenceRouter from "../api/intelligence/index.js";
-import roadmapHandler from "../roadmaps/index.js";
+import quizHandler from "./handlers/quiz.js";
+import intelligenceRouter from "./handlers/intelligence.js";
+import roadmapHandler from "./handlers/roadmap.js";
 
 const app = express();
 app.use(cors());
