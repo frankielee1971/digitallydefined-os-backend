@@ -1,5 +1,6 @@
 // /api/index.js
 // Hardened unified API handler for Vercel with method validation, env test route, rate limiting, and masked external errors
+// Optimized with Brevo email, multi-AI provider routing, caching, and timeouts
 
 const ALLOWED_ORIGINS = [
   'https://dashboard.digitallydefined.online',
@@ -40,8 +41,113 @@ const POST_ONLY_ACTIONS = new Set([
 
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX_REQUESTS = 60;
-const rateLimitStore = globalThis.__digitallyDefinedRateLimitStore || new Map();
-globalThis.__digitallyDefinedRateLimitStore = rateLimitStore;
+
+// Rate limit store with cleanup to prevent memory leaks
+const rateLimitStore = globalThis.__digitallyDefinedRateLimitStore || { map: new Map(), lastCleanup: Date.now() };
+if (!globalThis.__digitallyDefinedRateLimitStore) {
+  globalThis.__digitallyDefinedRateLimitStore = rateLimitStore;
+}
+
+// Cleanup old entries every 5 minutes
+function cleanupRateLimitStore() {
+  const now = Date.now();
+  if (now - rateLimitStore.lastCleanup > 5 * 60 * 1000) {
+    for (const [ip, bucket] of rateLimitStore.map.entries()) {
+      if (now > bucket.resetAt) {
+        rateLimitStore.map.delete(ip);
+      }
+    }
+    rateLimitStore.lastCleanup = now;
+  }
+}
+
+function getRateLimitMap() {
+  cleanupRateLimitStore();
+  return rateLimitStore.map;
+}
+
+const FETCH_TIMEOUT_MS = 5000;
+
+// AI Provider configuration - supports multiple free/paid providers with OmniRoute for smart routing
+const AI_PROVIDERS = {
+  groq: {
+    url: 'https://api.groq.com/openai/v1/chat/completions',
+    keyEnv: 'GROQ_API_KEY',
+    models: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768'],
+    defaultModel: 'llama-3.3-70b-versatile',
+    priority: 1,
+  },
+  nvidia: {
+    url: 'https://integrate.api.nvidia.com/v1/chat/completions',
+    keyEnv: 'NVIDIA_API_KEY',
+    models: ['meta/llama-3.1-405b-instruct', 'meta/llama3-70b-instruct'],
+    defaultModel: 'meta/llama3-70b-instruct',
+    priority: 2,
+  },
+  openrouter: {
+    url: 'https://openrouter.ai/api/v1/chat/completions',
+    keyEnv: 'OPENROUTER_API_KEY',
+    models: ['meta-llama/llama-3-70b-instruct', 'mistralai/mistral-large'],
+    defaultModel: 'meta-llama/llama-3-70b-instruct',
+    priority: 3,
+  },
+  antigravity: {
+    url: process.env.ANTIGRAVITY_BASE_URL || 'https://api.antigravity.ai/v1/chat/completions',
+    keyEnv: 'ANTIGRAVITY_API_KEY',
+    models: ['antigravity-v1'],
+    defaultModel: 'antigravity-v1',
+    priority: 4,
+  },
+  // OmniRoute - routes to multiple free AI providers automatically
+  omniroute: {
+    url: process.env.OMNIROUTE_BASE_URL || 'https://api.omniroute.ai/v1/chat/completions',
+    keyEnv: 'OMNIROUTE_API_KEY',
+    models: ['auto'], // OmniRoute auto-selects best available model
+    defaultModel: 'auto',
+    priority: 0, // Highest priority when available - routes to free providers
+  },
+  // Placeholder configs for future providers - just add API keys to enable
+  nararouter: {
+    url: process.env.NARAROUTER_BASE_URL || 'https://api.nara.router/v1/chat/completions',
+    keyEnv: 'NARAROUTER_API_KEY',
+    models: ['auto'],
+    defaultModel: 'auto',
+    priority: 5,
+  },
+  tokenrouter: {
+    url: process.env.TOKENROUTER_BASE_URL || 'https://api.tokenrouter.io/v1/chat/completions',
+    keyEnv: 'TOKENROUTER_API_KEY',
+    models: ['auto'],
+    defaultModel: 'auto',
+    priority: 6,
+  },
+  poolside: {
+    url: process.env.POOLSIDE_BASE_URL || 'https://api.poolside.ai/v1/chat/completions',
+    keyEnv: 'POOLSIDE_API_KEY',
+    models: ['poolside-v1'],
+    defaultModel: 'poolside-v1',
+    priority: 7,
+  },
+  agnesai: {
+    url: process.env.AGNESAI_BASE_URL || 'https://api.agnes.ai/v1/chat/completions',
+    keyEnv: 'AGNESAI_API_KEY',
+    models: ['agnes-v1'],
+    defaultModel: 'agnes-v1',
+    priority: 8,
+  },
+};
+
+// Cache for AI brief responses (20 minutes TTL)
+const aiBriefCache = globalThis.__aiBriefCache || { data: null, expiry: 0 };
+if (!globalThis.__aiBriefCache) {
+  globalThis.__aiBriefCache = aiBriefCache;
+}
+
+// Cache for Brevo stats (15 minutes TTL)
+const brevoCache = globalThis.__brevoCache || { data: null, expiry: 0 };
+if (!globalThis.__brevoCache) {
+  globalThis.__brevoCache = brevoCache;
+}
 
 const formatPct = (n) => `${Number.isFinite(n) ? n.toFixed(1) : '0.0'}%`;
 const formatUSD = (n) => `$${Number.isFinite(n) ? n.toLocaleString() : '0'}`;
@@ -77,6 +183,24 @@ async function parseJsonSafe(res, fallback = null) {
   }
 }
 
+// Fetch with timeout protection
+async function fetchWithTimeout(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error(`Request timed out after ${timeoutMs}ms`);
+    }
+    throw error;
+  }
+}
+
 function applyCors(req, res) {
   const origin = req.headers.origin;
 
@@ -103,14 +227,15 @@ function getClientIp(req) {
 function applyRateLimit(req, res) {
   const ip = getClientIp(req);
   const now = Date.now();
-  const bucket = rateLimitStore.get(ip);
+  const map = getRateLimitMap();
+  const bucket = map.get(ip);
 
   if (!bucket || now > bucket.resetAt) {
     const freshBucket = {
       count: 1,
       resetAt: now + RATE_LIMIT_WINDOW_MS,
     };
-    rateLimitStore.set(ip, freshBucket);
+    map.set(ip, freshBucket);
     res.setHeader('X-RateLimit-Limit', String(RATE_LIMIT_MAX_REQUESTS));
     res.setHeader('X-RateLimit-Remaining', String(RATE_LIMIT_MAX_REQUESTS - 1));
     res.setHeader('X-RateLimit-Reset', String(Math.ceil(freshBucket.resetAt / 1000)));
@@ -201,7 +326,7 @@ async function fetchFacebookGroup() {
     url.searchParams.set('fields', 'name,member_count,privacy');
     url.searchParams.set('access_token', token);
 
-    const res = await fetch(url.toString());
+    const res = await fetchWithTimeout(url.toString());
     const data = await parseJsonSafe(res, {});
 
     if (!res.ok) throw new Error(data?.error?.message || 'Facebook API error');
@@ -222,77 +347,57 @@ async function fetchFacebookGroup() {
   }
 }
 
-async function fetchSendPulseToken() {
-  const userId = process.env.SENDPULSE_API_USER_ID;
-  const secret = process.env.SENDPULSE_API_SECRET;
-  if (!userId || !secret) return { token: null, error: 'SendPulse credentials not set', debug: null };
+// Brevo (formerly Sendinblue) email marketing integration - replaces SendPulse
+async function fetchBrevoStats() {
+  const apiKey = process.env.BREVO_API_KEY;
+  
+  // Return cached data if still valid (15 min TTL)
+  const now = Date.now();
+  if (brevoCache.data && now < brevoCache.expiry) {
+    return { ...brevoCache.data, fromCache: true };
+  }
 
-  try {
-    const res = await fetch('https://api.sendpulse.com/oauth/access_token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        grant_type: 'client_credentials',
-        client_id: userId,
-        client_secret: secret,
-      }),
-    });
-
-    const data = await parseJsonSafe(res, {});
-    if (!res.ok) {
-      throw new Error(data?.error_description || data?.error || 'SendPulse token request failed');
-    }
-
-    return { token: data?.access_token || null, error: null, debug: null };
-  } catch (e) {
+  if (!apiKey) {
     return {
-      token: null,
-      error: maskErrorDetails(e, 'SendPulse auth'),
-      debug: process.env.NODE_ENV !== 'production' ? e.message || 'SendPulse token failed' : null,
+      totalSubscribers: 0,
+      emailOpenRate: '0.0%',
+      emailClickRate: '0.0%',
+      emailReplyRate: 'N/A',
+      emailRevenuePerCampaign: '$0',
+      topCampaigns: [],
+      error: 'Brevo API key not set',
+      debug: null,
     };
   }
-}
 
-function unwrapArrayPayload(payload) {
-  if (Array.isArray(payload)) return payload;
-  if (Array.isArray(payload?.data)) return payload.data;
-  if (Array.isArray(payload?.result)) return payload.result;
-  return [];
-}
-
-async function fetchSendPulseStats(token) {
   try {
-    const headers = { Authorization: `Bearer ${token}` };
+    const headers = {
+      'api-key': apiKey,
+      'Content-Type': 'application/json',
+    };
 
-    const [listsRes, campaignsRes] = await Promise.all([
-      fetch('https://api.sendpulse.com/addressbooks?limit=10&offset=0', { headers }),
-      fetch('https://api.sendpulse.com/campaigns?limit=5&offset=0', { headers }),
+    // Fetch contacts count and recent campaigns
+    const [contactsRes, campaignsRes] = await Promise.all([
+      fetchWithTimeout('https://api.brevo.com/v3/contacts?limit=1', { headers }),
+      fetchWithTimeout('https://api.brevo.com/v3/emailCampaigns?limit=5', { headers }),
     ]);
 
-    const listsJson = listsRes.ok ? await parseJsonSafe(listsRes, []) : [];
-    const campaignsJson = campaignsRes.ok ? await parseJsonSafe(campaignsRes, []) : [];
+    const contactsData = contactsRes.ok ? await parseJsonSafe(contactsRes, {}) : {};
+    const campaignsData = campaignsRes.ok ? await parseJsonSafe(campaignsRes, {}) : {};
 
-    if (!listsRes.ok) {
-      throw new Error(listsJson?.error || listsJson?.message || 'SendPulse addressbooks failed');
-    }
-    if (!campaignsRes.ok) {
-      throw new Error(campaignsJson?.error || campaignsJson?.message || 'SendPulse campaigns failed');
+    if (!contactsRes.ok) {
+      throw new Error(contactsData?.message || 'Brevo contacts request failed');
     }
 
-    const lists = unwrapArrayPayload(listsJson);
-    const campaigns = unwrapArrayPayload(campaignsJson);
+    const totalSubscribers = safeNumber(contactsData?.count, 0);
+    const campaigns = Array.isArray(campaignsData?.campaigns) ? campaignsData.campaigns : [];
 
-    const totalSubscribers = lists.reduce(
-      (sum, list) => sum + safeNumber(list?.all_email_qty, 0),
-      0
-    );
-
-    const withStats = campaigns.filter((c) => safeNumber(c?.statistics?.sent, 0) > 0);
+    const withStats = campaigns.filter((c) => safeNumber(c?.stats?.sent, 0) > 0);
 
     const normalizedCampaigns = campaigns.slice(0, 5).map((c) => {
-      const sent = safeNumber(c?.statistics?.sent, 0);
-      const opened = safeNumber(c?.statistics?.opened, 0);
-      const clicked = safeNumber(c?.statistics?.clicked, 0);
+      const sent = safeNumber(c?.stats?.sent, 0);
+      const opened = safeNumber(c?.stats?.uniqueOpened, 0);
+      const clicked = safeNumber(c?.stats?.uniqueClicked, 0);
       return {
         name: c?.name || c?.subject || 'Campaign',
         openRate: sent > 0 ? formatPct((opened / sent) * 100) : '0.0%',
@@ -303,21 +408,21 @@ async function fetchSendPulseStats(token) {
 
     const avgOpenRate = withStats.length
       ? withStats.reduce((sum, c) => {
-          const sent = safeNumber(c?.statistics?.sent, 0);
-          const opened = safeNumber(c?.statistics?.opened, 0);
+          const sent = safeNumber(c?.stats?.sent, 0);
+          const opened = safeNumber(c?.stats?.uniqueOpened, 0);
           return sum + (sent > 0 ? (opened / sent) * 100 : 0);
         }, 0) / withStats.length
       : 0;
 
     const avgClickRate = withStats.length
       ? withStats.reduce((sum, c) => {
-          const sent = safeNumber(c?.statistics?.sent, 0);
-          const clicked = safeNumber(c?.statistics?.clicked, 0);
+          const sent = safeNumber(c?.stats?.sent, 0);
+          const clicked = safeNumber(c?.stats?.uniqueClicked, 0);
           return sum + (sent > 0 ? (clicked / sent) * 100 : 0);
         }, 0) / withStats.length
       : 0;
 
-    return {
+    const result = {
       totalSubscribers,
       emailOpenRate: formatPct(avgOpenRate),
       emailClickRate: formatPct(avgClickRate),
@@ -327,17 +432,29 @@ async function fetchSendPulseStats(token) {
       error: null,
       debug: null,
     };
+
+    // Cache for 15 minutes
+    brevoCache.data = result;
+    brevoCache.expiry = now + 15 * 60 * 1000;
+
+    return result;
   } catch (e) {
-    return {
+    const errorResult = {
       totalSubscribers: 0,
       emailOpenRate: '0.0%',
       emailClickRate: '0.0%',
       emailReplyRate: 'N/A',
       emailRevenuePerCampaign: '$0',
       topCampaigns: [],
-      error: maskErrorDetails(e, 'SendPulse API'),
-      debug: process.env.NODE_ENV !== 'production' ? e.message || 'SendPulse fetch failed' : null,
+      error: maskErrorDetails(e, 'Brevo API'),
+      debug: process.env.NODE_ENV !== 'production' ? e.message || 'Brevo fetch failed' : null,
     };
+    
+    // Cache error briefly to avoid repeated failures
+    brevoCache.data = errorResult;
+    brevoCache.expiry = now + 2 * 60 * 1000;
+    
+    return errorResult;
   }
 }
 
@@ -350,7 +467,7 @@ async function fetchSheetsData() {
     url.searchParams.set('action', 'dashboard');
     url.searchParams.set('t', String(Date.now()));
 
-    const res = await fetch(url.toString(), {
+    const res = await fetchWithTimeout(url.toString(), {
       headers: { 'Cache-Control': 'no-store' },
     });
 
@@ -369,16 +486,47 @@ async function fetchSheetsData() {
   }
 }
 
+// Multi-provider AI brief with caching and smart priority-based routing
 async function fetchAIBrief(context) {
-  const apiKey = process.env.GROQ_API_KEY;
-  const model = process.env.MODEL || 'llama-3.3-70b-versatile';
+  const now = Date.now();
+  
+  // Return cached data if still valid (20 min TTL)
+  if (aiBriefCache.data && now < aiBriefCache.expiry) {
+    return { ...aiBriefCache.data, fromCache: true };
+  }
 
-  if (!apiKey) {
+  // Determine which provider to use based on available API keys and priority
+  // Priority order: omniroute (free routing) -> groq -> nvidia -> openrouter -> antigravity -> others
+  let selectedProvider = null;
+  let apiKey = null;
+  let model = null;
+
+  // Sort providers by priority (lower number = higher priority)
+  const allProviders = Object.keys(AI_PROVIDERS).sort((a, b) => {
+    const priorityA = AI_PROVIDERS[a].priority ?? 999;
+    const priorityB = AI_PROVIDERS[b].priority ?? 999;
+    return priorityA - priorityB;
+  });
+  
+  for (const providerName of allProviders) {
+    const provider = AI_PROVIDERS[providerName];
+    const key = process.env[provider.keyEnv];
+    if (key) {
+      selectedProvider = provider;
+      apiKey = key;
+      // Allow env override for model, otherwise use default
+      const envModel = process.env[`${providerName.toUpperCase()}_MODEL`];
+      model = envModel || provider.defaultModel;
+      break;
+    }
+  }
+
+  if (!selectedProvider || !apiKey) {
     return {
-      working: ['AI brief unavailable — GROQ_API_KEY not set.'],
+      working: ['AI brief unavailable — No AI provider API key set.'],
       slipping: [],
       nextActions: [],
-      error: 'Groq API key not set',
+      error: 'No AI provider configured',
       debug: null,
     };
   }
@@ -400,22 +548,32 @@ Respond ONLY with a JSON object in this exact format (no markdown, no extra text
 }`;
 
   try {
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    // For OmniRoute and similar auto-routing providers, don't specify model to let them choose
+    const requestBody = {
+      response_format: { type: 'json_object' },
+      messages: [{ role: 'user', content: prompt }],
+    };
+    
+    // Only add model if it's not 'auto' (for providers like OmniRoute that auto-select)
+    if (model !== 'auto') {
+      requestBody.model = model;
+    } else {
+      // Some providers need a model field even for auto-selection
+      requestBody.model = 'auto';
+    }
+
+    const res = await fetchWithTimeout(selectedProvider.url, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        model,
-        response_format: { type: 'json_object' },
-        messages: [{ role: 'user', content: prompt }],
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     const data = await parseJsonSafe(res, {});
     if (!res.ok) {
-      throw new Error(data?.error?.message || 'Groq API error');
+      throw new Error(data?.error?.message || `${selectedProvider.keyEnv || selectedProvider.defaultModel} API error`);
     }
 
     const raw = data?.choices?.[0]?.message?.content || '{}';
@@ -432,21 +590,35 @@ Respond ONLY with a JSON object in this exact format (no markdown, no extra text
       };
     }
 
-    return {
+    const result = {
       working: Array.isArray(parsed?.working) ? parsed.working : [],
       slipping: Array.isArray(parsed?.slipping) ? parsed.slipping : [],
       nextActions: Array.isArray(parsed?.nextActions) ? parsed.nextActions : [],
       error: null,
       debug: null,
+      provider: Object.keys(AI_PROVIDERS).find(key => AI_PROVIDERS[key] === selectedProvider) || 'unknown',
     };
+
+    // Cache for 20 minutes
+    aiBriefCache.data = result;
+    aiBriefCache.expiry = now + 20 * 60 * 1000;
+
+    return result;
   } catch (err) {
-    return {
+    const providerKey = Object.keys(AI_PROVIDERS).find(key => AI_PROVIDERS[key] === selectedProvider) || 'AI';
+    const errorResult = {
       working: ['Community is active and syncing.'],
       slipping: ['AI brief could not be generated right now.'],
-      nextActions: ['Verify Groq credentials and model settings if this persists.'],
-      error: maskErrorDetails(err, 'Groq API'),
-      debug: process.env.NODE_ENV !== 'production' ? err.message || 'Groq request failed' : null,
+      nextActions: [`Verify ${providerKey} credentials and model settings if this persists.`],
+      error: maskErrorDetails(err, `${providerKey} API`),
+      debug: process.env.NODE_ENV !== 'production' ? err.message || 'AI request failed' : null,
     };
+    
+    // Cache error briefly
+    aiBriefCache.data = errorResult;
+    aiBriefCache.expiry = now + 5 * 60 * 1000;
+    
+    return errorResult;
   }
 }
 
@@ -470,7 +642,7 @@ function buildAlerts(checks) {
   if (checks.emailError) {
     alerts.push({
       type: 'warning',
-      source: 'SendPulse',
+      source: 'Brevo',
       message: checks.emailError,
     });
   }
@@ -483,16 +655,16 @@ function buildAlerts(checks) {
     });
   }
 
-  if (!checks.groqSet) {
+  if (!checks.aiProviderSet) {
     alerts.push({
       type: 'info',
       source: 'AI Brief',
-      message: 'GROQ_API_KEY not set — AI Command Brief is using fallback text.',
+      message: 'No AI provider API key set — AI Command Brief is using fallback text.',
     });
   } else if (checks.aiError) {
     alerts.push({
       type: 'info',
-      source: 'AI Brief',
+      source: `AI Brief (${checks.aiProvider})`,
       message: checks.aiError,
     });
   }
@@ -509,15 +681,19 @@ function buildAlerts(checks) {
 }
 
 function buildEnvStatus() {
+  // Check which AI providers are available
+  const aiProviders = {};
+  for (const [name, config] of Object.entries(AI_PROVIDERS)) {
+    aiProviders[`${name}Set`] = !!process.env[config.keyEnv];
+  }
+
   return {
     dashboardApiKeySet: !!process.env.DASHBOARD_API_KEY,
     facebookGroupIdSet: !!process.env.FACEBOOK_GROUP_ID,
     facebookAccessTokenSet: !!process.env.FACEBOOK_ACCESS_TOKEN,
-    sendPulseUserIdSet: !!process.env.SENDPULSE_API_USER_ID,
-    sendPulseSecretSet: !!process.env.SENDPULSE_API_SECRET,
+    brevoApiKeySet: !!process.env.BREVO_API_KEY,
     sheetsWebhookUrlSet: !!process.env.SHEETS_WEBHOOK_URL,
-    groqApiKeySet: !!process.env.GROQ_API_KEY,
-    model: process.env.MODEL || 'llama-3.3-70b-versatile',
+    ...aiProviders,
     vercelEnv: process.env.VERCEL_ENV || 'unknown',
     nodeEnv: process.env.NODE_ENV || 'unknown',
   };
@@ -689,24 +865,12 @@ export default async function handler(req, res) {
         return res.status(401).json({ error: 'Unauthorized' });
       }
 
-      const [fbData, spTokenResult, sheetsResult] = await Promise.all([
+      // Parallel fetch with Brevo replacing SendPulse
+      const [fbData, brevoData, sheetsResult] = await Promise.all([
         fetchFacebookGroup(),
-        fetchSendPulseToken(),
+        fetchBrevoStats(),
         fetchSheetsData(),
       ]);
-
-      const spData = spTokenResult.token
-        ? await fetchSendPulseStats(spTokenResult.token)
-        : {
-            totalSubscribers: 0,
-            emailOpenRate: '0.0%',
-            emailClickRate: '0.0%',
-            emailReplyRate: 'N/A',
-            emailRevenuePerCampaign: '$0',
-            topCampaigns: [],
-            error: spTokenResult.error,
-            debug: spTokenResult.debug,
-          };
 
       const sheetsData = sheetsResult.data;
 
@@ -735,19 +899,29 @@ export default async function handler(req, res) {
 
       const aiBrief = await fetchAIBrief({
         communityCount,
-        emailSubscribers: spData.totalSubscribers,
-        emailOpenRate: spData.emailOpenRate,
-        emailClickRate: spData.emailClickRate,
+        emailSubscribers: brevoData.totalSubscribers,
+        emailOpenRate: brevoData.emailOpenRate,
+        emailClickRate: brevoData.emailClickRate,
         topAsset,
         revenue,
         communityGrowth,
       });
 
+      // Determine which AI provider is active for alerts
+      let activeAiProvider = null;
+      for (const [name, config] of Object.entries(AI_PROVIDERS)) {
+        if (process.env[config.keyEnv]) {
+          activeAiProvider = name;
+          break;
+        }
+      }
+
       const alerts = buildAlerts({
         facebookError: fbData?.error,
-        emailError: spData?.error,
+        emailError: brevoData?.error,
         sheetsError: sheetsResult?.error,
-        groqSet: !!process.env.GROQ_API_KEY,
+        aiProviderSet: !!activeAiProvider,
+        aiProvider: activeAiProvider,
         aiError: aiBrief?.error,
         facebookEnvSet: !!(process.env.FACEBOOK_GROUP_ID && process.env.FACEBOOK_ACCESS_TOKEN),
       });
@@ -758,14 +932,15 @@ export default async function handler(req, res) {
       const topPosts = Array.isArray(sheetsData?.topPosts) ? sheetsData.topPosts : [];
       const campaigns = Array.isArray(sheetsData?.campaigns) && sheetsData.campaigns.length > 0
         ? sheetsData.campaigns
-        : spData.topCampaigns;
+        : brevoData.topCampaigns;
 
       const debug = process.env.NODE_ENV !== 'production'
         ? {
             facebook: fbData?.debug || null,
-            sendpulse: spData?.debug || spTokenResult?.debug || null,
+            brevo: brevoData?.debug || null,
             sheets: sheetsResult?.debug || null,
-            groq: aiBrief?.debug || null,
+            ai: aiBrief?.debug || null,
+            aiProvider: activeAiProvider,
           }
         : undefined;
 
@@ -779,10 +954,10 @@ export default async function handler(req, res) {
         metrics: {
           communityCount,
           communityGrowth,
-          emailSubscribers: spData.totalSubscribers,
+          emailSubscribers: brevoData.totalSubscribers,
           emailGrowth,
-          emailOpenRate: spData.emailOpenRate,
-          emailClickRate: spData.emailClickRate,
+          emailOpenRate: brevoData.emailOpenRate,
+          emailClickRate: brevoData.emailClickRate,
           conversionRate,
           churnRisk,
           revenue,
@@ -796,6 +971,7 @@ export default async function handler(req, res) {
           working: aiBrief.working,
           slipping: aiBrief.slipping,
           nextActions: aiBrief.nextActions,
+          provider: aiBrief.provider,
         },
         alerts,
         ...(debug ? { debug } : {}),
