@@ -1,0 +1,155 @@
+{
+  "dryRun": true,
+  "totalPhases": 19,
+  "ready": 15,
+  "blocked": 4,
+  "missingIds": [
+    "PROJECTS_DB_ID",
+    "AREAS_DB_ID",
+    "GTD_INBOX_DB_ID"
+  ],
+  "results": [
+    {
+      "phase": "A",
+      "name": "Create GTD Inbox DB",
+      "status": "READY",
+      "type": "create_db",
+      "issues": []
+    },
+    {
+      "phase": "E",
+      "name": "Create Someday / Maybe DB",
+      "status": "READY",
+      "type": "create_db",
+      "issues": []
+    },
+    {
+      "phase": "F",
+      "name": "Add Next Action relation to Automation Log DB",
+      "status": "BLOCKED",
+      "type": null,
+      "issues": [
+        "GTD_INBOX_DB_ID is a placeholder — Phase A must run first"
+      ]
+    },
+    {
+      "phase": "G",
+      "name": "Add Next Action relation to Automation Events DB",
+      "status": "BLOCKED",
+      "type": null,
+      "issues": [
+        "GTD_INBOX_DB_ID is a placeholder — Phase A must run first"
+      ]
+    },
+    {
+      "phase": "H",
+      "name": "Canonicalize Product OS Status options",
+      "status": "READY",
+      "type": "patch_db_status",
+      "issues": []
+    },
+    {
+      "phase": "I",
+      "name": "Canonicalize Ideas & Intake DB Status options",
+      "status": "READY",
+      "type": "patch_db_status",
+      "issues": []
+    },
+    {
+      "phase": "J",
+      "name": "Canonicalize Digital Assets DB Status options",
+      "status": "READY",
+      "type": "patch_db_status",
+      "issues": []
+    },
+    {
+      "phase": "K",
+      "name": "Canonicalize Content Blocks DB Status options",
+      "status": "READY",
+      "type": "patch_db_status",
+      "issues": []
+    },
+    {
+      "phase": "L",
+      "name": "Canonicalize Automations Log DB Status options",
+      "status": "READY",
+      "type": "patch_db_status",
+      "issues": []
+    },
+    {
+      "phase": "M",
+      "name": "Canonicalize Automation Events DB Status options",
+      "status": "READY",
+      "type": "patch_db_status",
+      "issues": []
+    },
+    {
+      "phase": "C",
+      "name": "Replace DigitalAssets rich-text with relation",
+      "status": "BLOCKED",
+      "type": null,
+      "issues": [
+        "TARGET_DB_ID requires manual discovery — search all DBs for DigitalAssets rich-text columns"
+      ]
+    },
+    {
+      "phase": "N",
+      "name": "Add Product OS → Product asset count rollup",
+      "status": "READY",
+      "type": "add_rollup",
+      "issues": []
+    },
+    {
+      "phase": "O",
+      "name": "Add Digital Assets DB → Asset revenue attached rollup",
+      "status": "READY",
+      "type": "add_rollup",
+      "issues": []
+    },
+    {
+      "phase": "P",
+      "name": "Add Monthly Review DB → Automation count rollup",
+      "status": "READY",
+      "type": "add_rollup",
+      "issues": []
+    },
+    {
+      "phase": "Q",
+      "name": "Add Digital Assets DB → Reputation linked count rollup",
+      "status": "READY",
+      "type": "add_rollup",
+      "issues": []
+    },
+    {
+      "phase": "R",
+      "name": "Add Automation Events DB → Automation failure count rollup",
+      "status": "READY",
+      "type": "add_rollup",
+      "issues": []
+    },
+    {
+      "phase": "S",
+      "name": "Add Projects → GTD next action queue length rollup",
+      "status": "BLOCKED",
+      "type": null,
+      "issues": [
+        "PROJECTS_DB_ID is a placeholder — must be resolved",
+        "GTD_INBOX_DB_ID is a placeholder — Phase A must run first"
+      ]
+    },
+    {
+      "phase": "T",
+      "name": "Update lib/notion-schema.js backend alignment",
+      "status": "READY",
+      "type": "code_update",
+      "issues": []
+    },
+    {
+      "phase": "U",
+      "name": "Manual view configuration (UI only)",
+      "status": "READY",
+      "type": "manual_ui",
+      "issues": []
+    }
+  ]
+}

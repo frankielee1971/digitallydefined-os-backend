@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Digital Landlady: Keyword Quest</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Inter:wght@700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --dd-orange: #F18B25;
+            --dd-blue: #47B7D4;
+            --dd-red: #C20F0A;
+            --dd-bg: #FFFCF9;
+            --dd-dark: #000000;
+            --dd-text: #2D3748;
+        }
+
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background-color: var(--dd-bg);
+            color: var(--dd-text);
+            line-height: 1.5;
+        }
+
+        h1, h2, h3 { font-family: 'Inter', sans-serif; font-weight: 800; }
+
+        .brutalist-card {
+            background: #FFFFFF;
+            border: 1px solid var(--dd-dark);
+            border-radius: 0px;
+            box-shadow: none; /* No shadow */
+            transition: all 0.2s ease;
+        }
+
+        .btn-brutalist {
+            background-color: var(--dd-orange);
+            color: white;
+            border: 1px solid var(--dd-dark);
+            border-radius: 0px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            box-shadow: none; /* No shadow */
+            transition: all 0.1s;
+        }
+
+        .btn-brutalist:hover:not(:disabled) {
+            background-color: #e07d1b;
+        }
+
+        .btn-brutalist:active:not(:disabled) {
+            background-color: #c96e14;
+        }
+
+        .btn-brutalist:disabled {
+            background-color: #cbd5e0;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        .input-brutalist {
+            border: 1px solid var(--dd-dark);
+            border-radius: 0px;
+            padding: 1rem;
+            outline: none;
+            transition: all 0.2s;
+        }
+
+        .intent-tag {
+            padding: 0.25rem 0.75rem;
+            border: 1px solid var(--dd-dark);
+            border-radius: 0px;
+            font-size: 0.7rem;
+            font-weight: 800;
+            text-transform: uppercase;
+        }
+
+        .intent-informational { background-color: #E0F2FE; color: #0369A1; }
+        .intent-navigational { background-color: #DCFCE7; color: #15803D; }
+        .intent-commercial { background-color: #FEF3C7; color: #B45309; }
+        .intent-transactional { background-color: #FEE2E2; color: #B91C1C; }
+
+        .mode-btn {
+            padding: 8px 16px;
+            font-weight: 800;
+            font-size: 0.7rem;
+            border: 1px solid black;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .mode-btn.active {
+            background: black;
+            color: var(--dd-blue);
+        }
+
+        @keyframes pulse-red {
+            0% { background-color: transparent; }
+            50% { background-color: #fee2e2; }
+            100% { background-color: transparent; }
+        }
+        .timer-warning { animation: pulse-red 0.5s infinite; }
+    </style>
+</head>
+<body class="p-6 md:p-12">
+
+    <div class="max-w-6xl mx-auto">
+        <!-- Centered Header -->
+        <header class="flex flex-col items-center text-center mb-10 gap-6 border-b border-black pb-8">
+            <div class="w-full">
+                <h1 class="text-5xl md:text-6xl font-black text-[#F18B25] tracking-tighter uppercase leading-none">Digital Landlady</h1>
+                <p class="text-xl font-bold text-gray-700 mt-3 italic">Build. Rank. Rent. <span class="text-[#47B7D4] not-italic">Own Your Power.</span></p>
+                <div id="auth-status" class="text-[10px] font-black uppercase mt-2 text-gray-400">Syncing with cloud...</div>
+            </div>
+            
+            <div class="flex flex-col md:flex-row gap-4 w-full justify-between items-center mt-2">
+                <div class="flex border border-black w-full md:w-auto">
+                    <button onclick="switchMode('acquisition')" id="mode-acquisition" class="mode-btn active flex-grow md:flex-grow-0">Acquisition</button>
+                    <button onclick="switchMode('intent')" id="mode-intent" class="mode-btn flex-grow md:flex-grow-0">Intent Sorter</button>
+                    <button onclick="switchMode('difficulty')" id="mode-difficulty" class="mode-btn flex-grow md:flex-grow-0">Diff Crusher</button>
+                </div>
+                <div class="brutalist-card px-8 py-3 bg-[#47B7D4] text-white flex justify-between items-center gap-4 w-full md:w-auto">
+                    <span class="text-xs font-black uppercase text-black">Portfolio Value</span>
+                    <span class="text-3xl font-black text-black" id="total-score">0</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- How to Use / Blueprint Section -->
+        <section class="brutalist-card p-6 bg-white mb-8 border border-black">
+            <button onclick="toggleHowTo()" class="w-full flex justify-between items-center focus:outline-none">
+                <span class="text-lg font-black uppercase tracking-tight flex items-center gap-2">
+                    <span class="bg-[#F18B25] text-white px-2 py-0.5 text-xs font-black">GUIDE</span>
+                    The Landlady's Blueprint
+                </span>
+                <span id="howto-toggle-icon" class="font-black text-xl">[-]</span>
+            </button>
+            <div id="howto-content" class="mt-6 grid grid-cols-1 md:grid-cols-3 gap-6 pt-6 border-t border-black">
+                <div class="space-y-2">
+                    <h4 class="font-black text-sm uppercase text-[#F18B25]">1. Acquisition Mode</h4>
+                    <p class="text-xs text-gray-700 font-medium leading-relaxed">
+                        Solve target keyword clues by reading the mission prompts and hint. Type the exact phrases into the console to purchase and secure those assets for your digital empire.
+                    </p>
+                    <div class="bg-gray-50 p-2 border border-black text-[10px] font-bold text-gray-500 italic">
+                        Stuck? Type "emergency roof repair springfield" in Level 1 to start!
+                    </div>
+                </div>
+                <div class="space-y-2">
+                    <h4 class="font-black text-sm uppercase text-[#47B7D4]">2. Intent Sorter</h4>
+                    <p class="text-xs text-gray-700 font-medium leading-relaxed">
+                        Master the skill of instantly identifying client behavior. Categorize real user queries into their correct intent types (Informational, Transactional, etc.) before the timer expires.
+                    </p>
+                    <div class="bg-gray-50 p-2 border border-black text-[10px] font-bold text-gray-500 italic">
+                        Commercial/Transactional intent keywords are your high-value billing assets!
+                    </div>
+                </div>
+                <div class="space-y-2">
+                    <h4 class="font-black text-sm uppercase text-[#C20F0A]">3. Difficulty Crusher</h4>
+                    <p class="text-xs text-gray-700 font-medium leading-relaxed">
+                        Find competitive gaps in the market. Analyze key niches and uncover keywords that fall below the assigned Difficulty thresholds. Avoid overcrowded keywords!
+                    </p>
+                    <div class="bg-gray-50 p-2 border border-black text-[10px] font-bold text-gray-500 italic">
+                        Low difficulty means open space you can rank and rent with zero friction!
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-10">
+            
+            <div class="lg:col-span-7 space-y-8">
+                <!-- ACQUISITION MODE VIEW -->
+                <div id="view-acquisition" class="game-view space-y-8">
+                    <section class="brutalist-card p-8">
+                        <div class="flex items-center gap-3 mb-6">
+                            <span class="bg-black text-white px-3 py-1 text-xs font-black uppercase" id="level-display">LEVEL 1</span>
+                            <h2 class="text-3xl font-black uppercase" id="mission-title">Mission Title</h2>
+                        </div>
+                        <p class="text-lg font-medium mb-8 leading-snug text-gray-700" id="mission-desc"></p>
+                        
+                        <div class="bg-gray-50 p-6 border border-black">
+                            <h3 class="text-xs font-black text-black uppercase tracking-widest mb-4">Target Real Estate Assets:</h3>
+                            <div id="target-list" class="space-y-4"></div>
+                        </div>
+                    </section>
+
+                    <section class="brutalist-card p-8 bg-white">
+                        <label class="block text-xs font-black uppercase text-black mb-4 tracking-widest">Market Research Console</label>
+                        <div class="flex flex-col md:flex-row gap-0 border border-black">
+                            <input type="text" id="kw-input" placeholder="Enter keyword phrase..." class="input-brutalist flex-grow text-xl font-bold border-none">
+                            <button onclick="handleResearch()" id="research-btn" class="btn-brutalist px-10 py-5 text-lg border-l border-black border-y-0 border-r-0">Execute</button>
+                        </div>
+                        <p id="feedback-msg" class="mt-6 font-black text-sm min-h-[1.5rem] uppercase italic"></p>
+                    </section>
+                </div>
+
+                <!-- INTENT SORTER VIEW -->
+                <div id="view-intent" class="game-view hidden space-y-8">
+                    <section class="brutalist-card p-8 bg-white">
+                        <div class="flex justify-between items-center mb-6">
+                            <h2 class="text-2xl font-black uppercase">Intent Blitz</h2>
+                            <div id="intent-timer" class="text-2xl font-black border border-black px-4 py-1">10.0s</div>
+                        </div>
+                        <div class="py-12 border-y border-black mb-8 text-center">
+                            <span id="intent-kw-display" class="text-4xl font-black uppercase tracking-tighter">LOADING...</span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <button onclick="checkIntent('Informational')" class="btn-brutalist bg-blue-500 py-6">Informational</button>
+                            <button onclick="checkIntent('Navigational')" class="btn-brutalist bg-green-500 py-6">Navigational</button>
+                            <button onclick="checkIntent('Commercial')" class="btn-brutalist bg-yellow-500 py-6">Commercial</button>
+                            <button onclick="checkIntent('Transactional')" class="btn-brutalist bg-red-600 py-6">Transactional</button>
+                        </div>
+                        <p id="intent-feedback" class="mt-6 text-center font-black uppercase italic h-6"></p>
+                    </section>
+                </div>
+
+                <!-- DIFFICULTY CRUSHER VIEW -->
+                <div id="view-difficulty" class="game-view hidden space-y-8">
+                    <section class="brutalist-card p-8">
+                        <h2 class="text-2xl font-black uppercase mb-2">The Market Gap</h2>
+                        <p class="text-gray-600 font-bold mb-6">Find keywords for the <span class="text-black underline" id="diff-niche">Niche</span> niche that have a Difficulty <span class="text-red-600">under <span id="diff-threshold">30</span></span>.</p>
+                        <div class="flex flex-col md:flex-row gap-0 mb-8 border border-black">
+                            <input type="text" id="diff-input" placeholder="Type a low-diff keyword..." class="input-brutalist flex-grow text-xl font-bold border-none">
+                            <button onclick="handleDiffCrush()" class="btn-brutalist px-8 py-5 border-l border-black border-y-0 border-r-0">Analyze</button>
+                        </div>
+                        <div id="diff-results" class="space-y-3"></div>
+                    </section>
+                </div>
+            </div>
+
+            <div class="lg:col-span-5 space-y-8">
+                <section id="analysis-panel" class="hidden brutalist-card p-6 bg-[#F0F9FF]">
+                    <h3 class="text-xs font-black text-black uppercase tracking-widest mb-6 border-b border-black pb-2">Live Market Data</h3>
+                    <div id="analysis-content" class="space-y-6"></div>
+                </section>
+
+                <section class="brutalist-card p-6">
+                    <h3 class="text-xs font-black text-black uppercase tracking-widest mb-4">Secured Inventory</h3>
+                    <div id="found-inventory" class="flex flex-wrap gap-2 min-h-[80px] content-start">
+                        <p class="text-gray-400 font-bold text-xs uppercase italic">No assets secured...</p>
+                    </div>
+                </section>
+
+                <button id="next-btn" onclick="nextLevel()" class="hidden w-full py-5 btn-brutalist bg-black text-[#47B7D4] text-xl">
+                    Next Acquisition →
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
+
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'keyword-quest-v2';
+
+        // --- DATA ---
+        const scenarios = [
+            {
+                level: 1,
+                name: "Local Cash Flow",
+                desc: "We are hunting for 'High-Urgency' local keywords. People with a hole in their roof don't browse—they buy.",
+                targets: [
+                    { kw: "emergency roof repair springfield", hint: "Urgency + Location" },
+                    { kw: "commercial flat roof contractors", hint: "The B2B Big Money" },
+                    { kw: "roof replacement cost estimator", hint: "The Lead Magnet Tool" }
+                ],
+                data: {
+                    "emergency roof repair springfield": { vol: 45, diff: 12, intent: "Transactional", note: "CRITICAL ASSET. High conversion, low difficulty. This pays the mortgage." },
+                    "commercial flat roof contractors": { vol: 30, diff: 22, intent: "Commercial", note: "High-ticket leads. A single phone call here is worth $500 to a contractor." },
+                    "roof replacement cost estimator": { vol: 150, diff: 35, intent: "Informational", note: "Strategic play. Capture data before they even call a pro." }
+                }
+            },
+            {
+                level: 2,
+                name: "The Legacy Builder",
+                desc: "Now we scale. We're targeting Gen X women looking to monetize their expertise. We want legacy, not just leads.",
+                targets: [
+                    { kw: "digital marketing for gen x women", hint: "Target Audience + Solution" },
+                    { kw: "how to monetize skills after 50", hint: "The Pain Point Problem" },
+                    { kw: "best low cost digital assets to build", hint: "The Scalable Solution" }
+                ],
+                data: {
+                    "digital marketing for gen x women": { vol: 80, diff: 18, intent: "Commercial", note: "HIGH LEVERAGE. This audience is underserved and has the capital to invest." },
+                    "how to monetize skills after 50": { vol: 200, diff: 24, intent: "Informational", note: "Traffic magnet. This pulls in the 'Seekers' who become your tribe." },
+                    "best low cost digital assets to build": { vol: 50, diff: 15, intent: "Transactional", note: "The conversion point. They are ready to act and build their legacy." }
+                }
+            }
+        ];
+
+        const intentPool = [
+            { kw: "best laptop for video editing 2024", intent: "Commercial" },
+            { kw: "how to tie a tie", intent: "Informational" },
+            { kw: "nike official store", intent: "Navigational" },
+            { kw: "iphone 15 pro max price", intent: "Transactional" },
+            { kw: "digitally defined facebook group", intent: "Navigational" },
+            { kw: "how to overcome imposter syndrome at 50", intent: "Informational" }
+        ];
+
+        const diffPool = {
+            "Roofing": [
+                { kw: "how to clean gutters", diff: 15, vol: 1200 },
+                { kw: "best roofing boots for shingles", diff: 28, vol: 450 },
+                { kw: "roofing", diff: 95, vol: 50000 },
+                { kw: "flat roof repair cost", diff: 45, vol: 800 }
+            ],
+            "Digital Assets": [
+                { kw: "faceless youtube channel ideas", diff: 22, vol: 1500 },
+                { kw: "passive income from printables", diff: 29, vol: 2100 },
+                { kw: "how to start a blog in 2024", diff: 65, vol: 8000 }
+            ]
+        };
+
+        // --- STATE ---
+        let user = null;
+        let gameState = {
+            totalScore: 0,
+            foundKeywords: [],
+            currentLevel: 0
+        };
+
+        let activeMode = 'acquisition';
+        let currentIntentIdx = 0;
+        let intentTimer = 10;
+        let intentInterval;
+        let currentNiche = "Roofing";
+        let currentThreshold = 30;
+
+        // --- CORE STORAGE AND COLLAPSIBLE ENGINE ---
+        async function saveProgress() {
+            if (!user) return;
+            const userRef = doc(db, 'artifacts', appId, 'users', user.uid, 'profile', 'gameState');
+            await setDoc(userRef, gameState);
+        }
+
+        window.toggleHowTo = function() {
+            const content = document.getElementById('howto-content');
+            const icon = document.getElementById('howto-toggle-icon');
+            if (content.classList.contains('hidden')) {
+                content.classList.remove('hidden');
+                icon.textContent = '[-]';
+            } else {
+                content.classList.add('hidden');
+                icon.textContent = '[+]';
+            }
+        }
+
+        function updateUI() {
+            document.getElementById('total-score').textContent = gameState.totalScore.toLocaleString();
+            updateInventoryUI();
+            checkWin();
+            
+            if (activeMode === 'acquisition') {
+                const s = scenarios[gameState.currentLevel];
+                s.targets.forEach(t => {
+                    const el = document.getElementById(`target-${t.kw.replace(/\s+/g, '-')}`);
+                    if (el && gameState.foundKeywords.includes(t.kw)) {
+                        el.innerHTML = `<span class="text-sm font-black">${t.kw}</span><span class="text-xs font-black text-green-600">SECURED ✓</span>`;
+                    }
+                });
+            }
+        }
+
+        window.switchMode = function(mode) {
+            activeMode = mode;
+            document.querySelectorAll('.game-view').forEach(v => v.classList.add('hidden'));
+            document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(`view-${mode}`).classList.remove('hidden');
+            document.getElementById(`mode-${mode}`).classList.add('active');
+            
+            if (mode === 'intent') startIntentGame();
+            else clearInterval(intentInterval);
+
+            if (mode === 'difficulty') startDiffGame();
+            if (mode === 'acquisition') initAcquisition();
+        };
+
+        function initAcquisition() {
+            const s = scenarios[gameState.currentLevel];
+            document.getElementById('level-display').textContent = `LEVEL ${s.level}`;
+            document.getElementById('mission-title').textContent = s.name;
+            document.getElementById('mission-desc').textContent = s.desc;
+            
+            const list = document.getElementById('target-list');
+            list.innerHTML = '';
+            s.targets.forEach(t => {
+                const isFound = gameState.foundKeywords.includes(t.kw);
+                const div = document.createElement('div');
+                div.id = `target-${t.kw.replace(/\s+/g, '-')}`;
+                div.className = "flex items-center justify-between p-4 bg-white border border-black";
+                if (isFound) {
+                    div.innerHTML = `<span class="text-sm font-black">${t.kw}</span><span class="text-xs font-black text-green-600">SECURED ✓</span>`;
+                } else {
+                    div.innerHTML = `<span class="text-sm font-black">Targeting Asset...</span><span class="text-[10px] font-black text-[#F18B25] uppercase italic">Hint: ${t.hint}</span>`;
+                }
+                list.appendChild(div);
+            });
+        }
+
+        window.handleResearch = async function() {
+            const input = document.getElementById('kw-input');
+            const val = input.value.trim().toLowerCase();
+            if (!val) return;
+
+            const s = scenarios[gameState.currentLevel];
+            const data = s.data[val];
+            const panel = document.getElementById('analysis-panel');
+            const content = document.getElementById('analysis-content');
+
+            panel.classList.remove('hidden');
+            if (data) {
+                content.innerHTML = `
+                    <div class="flex justify-between items-start">
+                        <span class="text-3xl font-black text-black">${val}</span>
+                        <div class="intent-tag intent-${data.intent.toLowerCase()}">${data.intent}</div>
+                    </div>
+                    <div class="grid grid-cols-2 border border-black">
+                        <div class="p-4 border-r border-black"><span class="block text-[10px] font-black text-gray-400">VOLUME</span><span class="text-2xl font-black">${data.vol}</span></div>
+                        <div class="p-4"><span class="block text-[10px] font-black text-gray-400">DIFF</span><span class="text-2xl font-black">${data.diff}</span></div>
+                    </div>
+                    <div class="bg-white p-4 border border-black font-bold text-sm">${data.note}</div>
+                `;
+
+                const targetObj = s.targets.find(t => t.kw === val);
+                if (targetObj && !gameState.foundKeywords.includes(val)) {
+                    gameState.foundKeywords.push(val);
+                    gameState.totalScore += 500;
+                    await saveProgress();
+                    updateUI();
+                }
+            } else {
+                content.innerHTML = `<p class="font-black uppercase text-red-600">Noise Detected. No market value for this phrase.</p>`;
+            }
+            input.value = '';
+        }
+
+        // --- INTENT BLITZ ---
+        function startIntentGame() {
+            currentIntentIdx = Math.floor(Math.random() * intentPool.length);
+            document.getElementById('intent-kw-display').textContent = intentPool[currentIntentIdx].kw;
+            intentTimer = 10;
+            updateIntentTimer();
+            clearInterval(intentInterval);
+            intentInterval = setInterval(() => {
+                intentTimer -= 0.1;
+                updateIntentTimer();
+                if (intentTimer <= 0) {
+                    intentTimer = 0;
+                    window.checkIntent('None');
+                }
+            }, 100);
+        }
+
+        function updateIntentTimer() {
+            const el = document.getElementById('intent-timer');
+            if (!el) return;
+            el.textContent = intentTimer.toFixed(1) + 's';
+        }
+
+        window.checkIntent = async function(userChoice) {
+            clearInterval(intentInterval);
+            const correct = intentPool[currentIntentIdx].intent;
+            const feedback = document.getElementById('intent-feedback');
+            
+            if (userChoice === correct) {
+                feedback.textContent = "CORRECT. YOU SPOT PROFIT FAST.";
+                feedback.className = "mt-6 text-center font-black uppercase italic text-green-600";
+                gameState.totalScore += 200;
+                await saveProgress();
+            } else {
+                feedback.textContent = `WRONG. THAT WAS ${correct.toUpperCase()}.`;
+                feedback.className = "mt-6 text-center font-black uppercase italic text-red-600";
+            }
+            updateUI();
+            setTimeout(startIntentGame, 1500);
+        };
+
+        // --- DIFF CRUSHER ---
+        function startDiffGame() {
+            const niches = Object.keys(diffPool);
+            currentNiche = niches[Math.floor(Math.random() * niches.length)];
+            currentThreshold = 30;
+            document.getElementById('diff-niche').textContent = currentNiche;
+            document.getElementById('diff-threshold').textContent = currentThreshold;
+            document.getElementById('diff-results').innerHTML = '';
+        }
+
+        window.handleDiffCrush = async function() {
+            const input = document.getElementById('diff-input');
+            const val = input.value.trim().toLowerCase();
+            if (!val) return;
+
+            const pool = diffPool[currentNiche];
+            const result = pool.find(item => item.kw.toLowerCase() === val);
+            const list = document.getElementById('diff-results');
+
+            if (result) {
+                const isWinner = result.diff <= currentThreshold;
+                const div = document.createElement('div');
+                div.className = `p-4 border border-black flex justify-between items-center ${isWinner ? 'bg-green-50' : 'bg-red-50'}`;
+                div.innerHTML = `
+                    <div>
+                        <p class="font-black uppercase text-sm">${result.kw}</p>
+                        <p class="text-[10px] font-bold text-gray-500">DIFF: ${result.diff} | VOL: ${result.vol}</p>
+                    </div>
+                    <span class="font-black text-xs">${isWinner ? 'CRUSHED +300' : 'TOO COMPETITIVE'}</span>
+                `;
+                list.prepend(div);
+                if (isWinner) {
+                    gameState.totalScore += 300;
+                    await saveProgress();
+                    updateUI();
+                }
+            }
+            input.value = '';
+        };
+
+        function updateInventoryUI() {
+            const inv = document.getElementById('found-inventory');
+            if (!inv) return;
+            if (gameState.foundKeywords.length > 0) {
+                inv.innerHTML = gameState.foundKeywords.map(f => `<span class="px-2 py-1 bg-black text-[#47B7D4] font-black text-[10px] uppercase border border-black">${f}</span>`).join('');
+            }
+        }
+
+        function checkWin() {
+            const s = scenarios[gameState.currentLevel];
+            const allTargetsFound = s.targets.every(t => gameState.foundKeywords.includes(t.kw));
+            if (allTargetsFound) {
+                const btn = document.getElementById('next-btn');
+                const msg = document.getElementById('feedback-msg');
+                if (btn && gameState.currentLevel < scenarios.length - 1) {
+                    btn.classList.remove('hidden');
+                    msg.textContent = "AREA SECURED. SCALE TO NEXT CLUSTER.";
+                } else if (msg) {
+                    msg.textContent = "EMPIRE FULLY CONSOLIDATED. YOU ARE THE DIGITAL LANDLADY.";
+                }
+            }
+        }
+
+        window.nextLevel = async function() {
+            if (gameState.currentLevel < scenarios.length - 1) {
+                gameState.currentLevel++;
+                await saveProgress();
+                document.getElementById('next-btn').classList.add('hidden');
+                document.getElementById('feedback-msg').textContent = '';
+                initAcquisition();
+                updateUI();
+            }
+        };
+
+        // --- AUTH & INIT ---
+        const initAuth = async () => {
+            try {
+                await signInAnonymously(auth);
+            } catch (error) {
+                console.error("Auth error", error);
+            }
+        };
+
+        onAuthStateChanged(auth, async (u) => {
+            if (u) {
+                user = u;
+                document.getElementById('auth-status').textContent = `ID: ${user.uid} (Secured Sync)`;
+                
+                const userRef = doc(db, 'artifacts', appId, 'users', user.uid, 'profile', 'gameState');
+                const docSnap = await getDoc(userRef);
+                
+                if (docSnap.exists()) {
+                    gameState = docSnap.data();
+                } else {
+                    await saveProgress();
+                }
+                
+                initAcquisition();
+                updateUI();
+            }
+        });
+
+        initAuth();
+
+    </script>
+</body>
+</html>

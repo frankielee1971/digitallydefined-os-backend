@@ -1,0 +1,696 @@
+import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { schemaPrompt, validateAgentOutput } from "../_shared/agent-schemas.ts";
+
+type JsonRecord = Record<string, unknown>;
+type Candidate = { provider: string; model: string; key: string; url: string };
+
+const corsHeaders = (origin = "") => ({
+  "Access-Control-Allow-Origin": origin || "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, x-api-key, x-user-id",
+  "Vary": "Origin",
+});
+
+const json = (body: unknown, status = 200, origin = "") =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json", ...corsHeaders(origin) },
+  });
+
+async function insertRow(table: string, payload: JsonRecord, upsert = false) {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error("Supabase database credentials are not available to the Edge Function");
+  }
+  const response = await fetch(`${supabaseUrl}/rest/v1/${table}${upsert ? "?on_conflict=email,source" : ""}`, {
+    method: "POST",
+    headers: {
+      "apikey": serviceRoleKey,
+      "Authorization": `Bearer ${serviceRoleKey}`,
+      "Content-Type": "application/json",
+      "Prefer": upsert ? "resolution=merge-duplicates,return=representation" : "return=representation",
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error(`Database write failed: ${response.status} ${await response.text()}`);
+  return response.json();
+}
+
+const parseJsonReply = (reply: string) => {
+  const cleaned = reply
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+  return JSON.parse(cleaned);
+};
+
+const normalizeOpenRouterModel = (model: string) =>
+  model.replace(/^openrouter\//, "") || "openai/gpt-4o-mini";
+
+const normalizeGroqModel = (model: string) =>
+  model.replace(/^groq\//, "") || "llama-3.3-70b-versatile";
+
+const getCandidates = (): Candidate[] => {
+  const openRouterKey = Deno.env.get("OPENROUTER_API_KEY") || "";
+  const groqKey = Deno.env.get("GROQ_API_KEY") || "";
+  const preferred = Deno.env.get("AI_MODEL") || Deno.env.get("OMNIROUTE_MODEL") || "";
+  const candidates: Candidate[] = [];
+
+  if (preferred && preferred !== "free") {
+    if (preferred.startsWith("groq/") && groqKey) {
+      candidates.push({
+        provider: "groq",
+        model: normalizeGroqModel(preferred),
+        key: groqKey,
+        url: "https://api.groq.com/openai/v1/chat/completions",
+      });
+    } else if (openRouterKey) {
+      candidates.push({
+        provider: "openrouter",
+        model: normalizeOpenRouterModel(preferred),
+        key: openRouterKey,
+        url: "https://openrouter.ai/api/v1/chat/completions",
+      });
+    }
+  }
+
+  if (groqKey && !candidates.some((item) => item.provider === "groq")) {
+    candidates.push({
+      provider: "groq",
+      model: Deno.env.get("GROQ_MODEL_ID") || "llama-3.3-70b-versatile",
+      key: groqKey,
+      url: "https://api.groq.com/openai/v1/chat/completions",
+    });
+  }
+
+  if (openRouterKey && !candidates.some((item) => item.provider === "openrouter")) {
+    candidates.push({
+      provider: "openrouter",
+      model: Deno.env.get("OPENROUTER_MODEL_ID") || "openai/gpt-4o-mini",
+      key: openRouterKey,
+      url: "https://openrouter.ai/api/v1/chat/completions",
+    });
+  }
+
+  return candidates;
+};
+
+async function runAI(systemPrompt: string, userPrompt: string, jsonMode = false) {
+  const candidates = getCandidates();
+  if (!candidates.length) throw new Error("No AI provider is configured in Supabase secrets");
+
+  let lastError = "";
+  for (const candidate of candidates) {
+    try {
+      const response = await fetch(candidate.url, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${candidate.key}`,
+          "Content-Type": "application/json",
+          ...(candidate.provider === "openrouter"
+            ? { "HTTP-Referer": "https://digitallydefined.online", "X-Title": "DigitallyDefined" }
+            : {}),
+        },
+        body: JSON.stringify({
+          model: candidate.model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          temperature: jsonMode ? 0.35 : 0.7,
+          max_tokens: jsonMode ? 1400 : 4000,
+          ...(jsonMode && candidate.provider === "openrouter"
+            ? { response_format: { type: "json_object" } }
+            : {}),
+        }),
+        signal: AbortSignal.timeout(90000),
+      });
+
+      if (!response.ok) {
+        lastError = `${candidate.provider} HTTP ${response.status}: ${await response.text()}`;
+        continue;
+      }
+
+      const payload = await response.json();
+      const reply = payload?.choices?.[0]?.message?.content || "";
+      if (!reply) {
+        lastError = `${candidate.provider} returned an empty response`;
+        continue;
+      }
+
+      return { reply, provider: candidate.provider, model: candidate.model };
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  throw new Error(lastError || "All AI providers failed");
+}
+
+const agentPrompts: Record<string, { schema: string; system: string; user: (input: JsonRecord) => string }> = {
+  quiz: {
+    schema: "quiz",
+    system: `You are the Digital Superpower Quiz planner for DigitallyDefined.
+Classify the answers as Builder, Creator, Educator, Strategist, or Connector.
+Be direct, useful, privacy-first, and free of hype.
+Return only JSON:
+{"superpowerName":"Builder","superpowerDescription":"...","recommendedPathways":["...","...","..."],"confidenceScore":0.85}`,
+    user: (input) => `Quiz answers: ${JSON.stringify(input.answers || input)}`,
+  },
+  niche: {
+    schema: "niche",
+    system: `You are an AI-assisted niche discovery planner for DigitallyDefined.
+Evaluate a niche for faceless digital real estate. Do not invent search-volume statistics.
+Be explicit when recommendations require validation.
+Return only JSON:
+{"niche":"...","keywords":["..."],"demand":"High|Medium|Low","competition":"High|Medium|Low","recommendation":"..."}`,
+    user: (input) => `Analyze this topic or niche: ${String(input.query || input.niche || "")}`,
+  },
+  roadmap: {
+    schema: "roadmap",
+    system: `You create practical DigitallyDefined build roadmaps for Gen X women.
+Use a calm, direct tone. Avoid income promises. Give concrete, sequential actions.
+Use all supplied market signals (scorecard profitability, competition, trend strength, viability, audience, opportunity gaps, privacy needs, energy, burnout risk, AI tools) to tailor the plan.
+Return only JSON:
+{"steps":["...","...","...","..."],"estimatedTime":"...","tools":["...","..."],"aiTools":["...","..."],"profitabilityScore":0,"competitionLevel":"...","trendStrength":"...","nicheViability":"...","nextAction":"..."}`,
+    user: (input) => `Create a personalized roadmap from this profile:
+${JSON.stringify({
+  name: input.name || "Builder",
+  superpower: input.superpower || "Builder",
+  answers: input.answers || {},
+  profile: input.profile || {},
+  goal: input.goal || "",
+  profitabilityScore: input.profitabilityScore ?? null,
+  competitionLevel: input.competitionLevel ?? null,
+  trendStrength: input.trendStrength ?? null,
+  nicheViability: input.nicheViability ?? null,
+  audienceInsight: input.audienceInsight ?? null,
+  opportunityGaps: input.opportunityGaps ?? [],
+  privacyNeeds: input.privacyNeeds ?? null,
+  energyLevel: input.energyLevel ?? null,
+  burnoutRisk: input.burnoutRisk ?? null,
+  aiTools: input.aiTools ?? [],
+})}`,
+  },
+  reputation: {
+    schema: "reputation",
+    system: `You evaluate demand and trust signals for a proposed digital niche.
+Do not claim live market research unless evidence is supplied in the input.
+Return only JSON:
+{"niche":"...","demandScore":7,"competitionScore":5,"reputationSignals":["..."],"recommendation":"..."}`,
+    user: (input) => `Evaluate this niche and supplied evidence: ${JSON.stringify(input)}`,
+  },
+  scorecard: {
+    schema: "scorecard",
+    system: `You interpret a deterministic niche scorecard for DigitallyDefined.
+Never change the supplied score or tier. Explain what the inputs mean for a faceless digital asset.
+Do not invent market data. Recommend small validation experiments before a full build.`,
+    user: (input) => `Interpret this scorecard result: ${JSON.stringify(input)}`,
+  },
+  "retirement-guide": {
+    schema: "retirement-guide",
+    system: `You explain retirement calculator results for educational planning.
+Do not provide individualized financial advice or guarantees. Identify assumptions and questions the user may want to review with a qualified professional.
+Explain how digital assets could supplement a plan without presenting projections as certain.`,
+    user: (input) => `Explain these calculator inputs and results: ${JSON.stringify(input)}`,
+  },
+  "asset-plan": {
+    schema: "asset-plan",
+    system: `You interpret a proposed faceless digital asset portfolio.
+Treat all yields and valuations as user-supplied scenarios, not verified forecasts.
+Identify assumptions, concentration risk, a sensible build order, and one next validation step.`,
+    user: (input) => `Interpret this proposed portfolio: ${JSON.stringify(input)}`,
+  },
+  "offer-architect": {
+    schema: "offer-architect",
+    system: `You are the internal DigitallyDefined Offer Architect.
+Build a structured offer for one funnel stage: lead_magnet, core_offer, authority_bundle, community, or recurring_revenue.
+The nested offer must follow the supplied stage requirements. Avoid hype and unsupported income claims.`,
+    user: (input) => `Create a schema-driven offer from this brief: ${JSON.stringify(input)}`,
+  },
+};
+
+async function runStructuredAgent(agentName: string, inputData: JsonRecord) {
+  const config = agentPrompts[agentName];
+  if (!config) throw new Error(`Unknown agent: ${agentName}`);
+  const result = await runAI(
+    `${config.system}\nReturn only JSON matching this schema:\n${schemaPrompt(config.schema)}`,
+    config.user(inputData),
+    true,
+  );
+  const data = parseJsonReply(result.reply);
+  const validation = validateAgentOutput(config.schema, data);
+  if (!validation.valid) throw new Error(`Invalid ${config.schema} output: ${validation.errors.join("; ")}`);
+  return { data, provider: result.provider, model: result.model, schema: config.schema };
+}
+
+async function guardInsert(table: string, payload: JsonRecord) {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  if (!supabaseUrl || !serviceRoleKey) return;
+  try {
+    await fetch(`${supabaseUrl}/rest/v1/${table}`, {
+      method: "POST",
+      headers: {
+        "apikey": serviceRoleKey,
+        "Authorization": `Bearer ${serviceRoleKey}`,
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal",
+      },
+      body: JSON.stringify(payload),
+    });
+  } catch (err) {
+    console.warn(`[intelligence] Skipped store to "${table}":`, err instanceof Error ? err.message : String(err));
+  }
+}
+
+// Deterministic market analysers (mirror the Node backend agents so the edge
+// intelligence endpoint can aggregate all six analyses without extra AI keys).
+function analyzeAudience(niche: string) {
+  return {
+    niche,
+    painPoints: ["Overwhelm from too much information", "Not knowing where to start", "Fear of choosing the wrong niche", "Confusion about tech setup"],
+    desires: ["Clarity", "Confidence", "A simple roadmap", "Fast wins"],
+    motivations: ["Freedom", "Flexibility", "Extra income", "Creative expression"],
+    buyingTriggers: ["Clear step-by-step guidance", "Fast setup", "Beginner-friendly tools", "Proof of results"],
+  };
+}
+
+function analyzeCompetition(niche: string) {
+  return {
+    niche,
+    topCompetitors: [
+      { name: "Competitor A", strengths: ["Strong brand", "Consistent publishing", "Clear offer"], weaknesses: ["High pricing", "Slow response time"] },
+      { name: "Competitor B", strengths: ["Great community", "High engagement"], weaknesses: ["Weak onboarding", "No automation"] },
+    ],
+    positioningInsights: ["Most competitors focus on beginners", "Few competitors offer automation-ready systems", "Opportunity to differentiate with simplicity + speed"],
+    recommendedActions: ["Position yourself as the fast, simple alternative", "Create a frictionless onboarding flow", "Offer a micro-offer competitors don't have"],
+  };
+}
+
+function analyzeTrends(niche: string) {
+  return {
+    niche,
+    risingTopics: [`${niche} beginner frameworks`, `${niche} automation workflows`, `${niche} micro-offers`, `${niche} audience building`],
+    platformTrends: ["Short-form video growth", "Newsletter revival", "AI-assisted content creation", "Community-driven learning"],
+    searchMomentum: { last30Days: "Moderate growth", last90Days: "Strong upward trend", prediction: "High opportunity" },
+    recommendedActions: ["Create 3 pillar content pieces around rising topics", "Publish weekly short-form content", "Build a simple lead magnet", "Start a newsletter"],
+  };
+}
+
+function analyzeOpportunities(niche: string) {
+  return {
+    niche,
+    gaps: ["No simple beginner roadmap", "No automation-ready templates", "No micro-offers for fast wins"],
+    underservedAudiences: ["Busy professionals", "Moms building digital businesses", "Creators who hate tech complexity"],
+    unmetNeeds: ["Clear step-by-step guidance", "Fast setup systems", "Automation without overwhelm"],
+    recommendedOpportunities: ["Create a beginner-friendly starter kit", "Build a 1-hour automation setup", "Offer a micro-offer that solves one painful problem"],
+  };
+}
+
+function calculateWealth(input: JsonRecord) {
+  const currentAge = Number(input.currentAge || 52);
+  const retireAge = Number(input.retireAge || 67);
+  const currentSavings = Number(input.currentSavings || 120000);
+  const monthlyContribution = Number(input.monthlyContribution || 600);
+  const annualReturn = Number(input.annualReturn || 6) / 100;
+  const desiredIncome = Number(input.desiredIncome || 55000);
+  const socialSecurity = Number(input.socialSecurity || 24000);
+  const yearsToRetire = Math.max(0, retireAge - currentAge);
+  const targetNestEgg = Math.max(0, desiredIncome - socialSecurity) / 0.04;
+  const futureSavings = currentSavings * Math.pow(1 + annualReturn, yearsToRetire);
+  const monthlyRate = annualReturn / 12;
+  const periods = yearsToRetire * 12;
+  const factor = monthlyRate === 0
+    ? periods
+    : (Math.pow(1 + monthlyRate, periods) - 1) / monthlyRate;
+  const totalAtRetirement = futureSavings + monthlyContribution * factor;
+  const gap = Math.max(0, targetNestEgg - totalAtRetirement);
+  return {
+    targetNestEgg,
+    totalAtRetirement,
+    gap,
+    monthlyNeeded: factor > 0 ? gap / factor : 0,
+    isOnTrack: gap === 0,
+  };
+}
+
+const dashboardData = {
+  revenue: "$12,450",
+  leads: 156,
+  conversionRate: 0.248,
+  assetValue: 48000,
+  topAsset: "Email List",
+  communityGrowth: "+12%",
+  emailGrowth: "+8%",
+  churnRisk: "Low",
+  reviews: [],
+  campaigns: [],
+  competitors: [],
+  email: {},
+  alerts: [{ type: "info", source: "System", message: "Supabase backend is responding" }],
+  sourceHealth: { supabase: "Active" },
+  automations: [
+    { name: "Review Response Auto-Reply", status: "active", lastRun: "2 hours ago" },
+    { name: "Social Media Cross-Post", status: "active", lastRun: "5 hours ago" },
+    { name: "Email Lead Nurturing", status: "paused", lastRun: "1 day ago" },
+  ],
+  aiBrief: { working: [], slipping: [], nextActions: [] },
+  community: [],
+};
+
+serve(async (req) => {
+  const origin = req.headers.get("origin") || "";
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(origin) });
+  if (req.method !== "POST") return json({ error: "Method not allowed - use POST" }, 405, origin);
+
+  let body: JsonRecord;
+  try {
+    const text = await req.text();
+    body = text ? JSON.parse(text) : {};
+  } catch {
+    return json({ error: "Invalid JSON body" }, 400, origin);
+  }
+
+  const action = String(body.action || "").trim();
+  const publicAgentAction = action.startsWith("agent.");
+  const publicFormAction = ["subscribe", "contact", "quiz.complete", "public.chat"].includes(action);
+  const expectedKey = (Deno.env.get("DASHBOARD_API_KEY") || "").trim();
+  const providedKey = (req.headers.get("x-api-key") || req.headers.get("authorization") || "").trim();
+
+  if (!publicAgentAction && !publicFormAction && (!expectedKey || providedKey !== expectedKey)) {
+    return json({ error: "Unauthorized - Invalid or missing API key" }, 401, origin);
+  }
+
+  if (action === "subscribe") {
+    const email = String(body.email || "").trim().toLowerCase();
+    if (!email) return json({ error: "Email is required" }, 400, origin);
+    try {
+      await insertRow("website_leads", {
+        email,
+        name: String(body.name || "").trim() || null,
+        source: String(body.source || "website"),
+        tags: Array.isArray(body.tags) ? body.tags : [],
+        metadata: {},
+      }, true);
+      return json({ success: true, message: "You're on the list!" }, 200, origin);
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : String(error) }, 500, origin);
+    }
+  }
+
+  if (action === "contact") {
+    const name = String(body.name || "").trim();
+    const email = String(body.email || "").trim().toLowerCase();
+    const message = String(body.message || "").trim();
+    if (!name || !email || !message) return json({ error: "Name, email, and message are required" }, 400, origin);
+    try {
+      await insertRow("contact_messages", { name, email, message, source: String(body.source || "contact-page") });
+      return json({ success: true, message: "Message sent" }, 200, origin);
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : String(error) }, 500, origin);
+    }
+  }
+
+  if (action === "quiz.complete") {
+    const name = String(body.name || "").trim();
+    const email = String(body.email || "").trim().toLowerCase();
+    const superpower = String(body.superpower || "").trim().toLowerCase();
+    if (!name || !email || !superpower) return json({ error: "Name, email, and superpower are required" }, 400, origin);
+    try {
+      await insertRow("website_leads", {
+        email,
+        name,
+        source: "digital-superpower-quiz",
+        tags: ["quiz-complete", `superpower-${superpower}`, "roadmap-requested"],
+        metadata: { superpower },
+      }, true);
+      const saved = await insertRow("quiz_roadmaps", {
+        email,
+        name,
+        superpower,
+        answers: body.answers || {},
+        roadmap: body.roadmap || {},
+        source: String(body.source || "digital-superpower-quiz"),
+      });
+      return json({ success: true, id: saved?.[0]?.id || null, superpower }, 200, origin);
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : String(error) }, 500, origin);
+    }
+  }
+
+  if (action === "public.chat") {
+    const message = String(body.message || "").trim().slice(0, 1200);
+    if (!message) return json({ error: "A message is required" }, 400, origin);
+    try {
+      const result = await runAI(
+        `You are the public DigitallyDefined planning guide for Gen X women.
+Explain faceless digital real estate, retirement planning concepts, niche validation, and the website tools in plain language.
+Do not promise income, present projections as guarantees, or provide individualized financial advice.
+Keep responses concise and end with one relevant next step inside the DigitallyDefined tools.`,
+        message,
+      );
+      return json({ success: true, reply: result.reply, provider: result.provider, model: result.model }, 200, origin);
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : String(error) }, 502, origin);
+    }
+  }
+
+  if (publicAgentAction) {
+    const aliases: Record<string, string> = {
+      quiz: "quiz",
+      "digital-superpower-quiz": "quiz",
+      niche: "niche",
+      "niche-keyword-discovery": "niche",
+      roadmap: "roadmap",
+      "roadmap-generator": "roadmap",
+      reputation: "reputation",
+      "reputation-intelligence": "reputation",
+      scorecard: "scorecard",
+      "scorecard-interpreter": "scorecard",
+      "retirement-guide": "retirement-guide",
+      "asset-plan": "asset-plan",
+      "offer-architect": "offer-architect",
+      "json-schema-generator": "offer-architect",
+      wealth: "wealth",
+      "digital-wealth-calculator": "wealth",
+    };
+    const requested = action.slice("agent.".length);
+    const agentName = aliases[requested];
+    if (!agentName) {
+      return json({ error: `Unknown agent action: ${action}`, availableAgents: Object.keys(aliases) }, 404, origin);
+    }
+
+    const inputData = (body.inputData && typeof body.inputData === "object"
+      ? body.inputData
+      : body.data && typeof body.data === "object"
+        ? body.data
+        : {}) as JsonRecord;
+
+    try {
+      if (agentName === "wealth") {
+        return json({ success: true, data: calculateWealth(inputData), provider: "local", model: null }, 200, origin);
+      }
+      const result = await runStructuredAgent(agentName, inputData);
+      return json({ success: true, ...result }, 200, origin);
+    } catch (error) {
+      return json({
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        agent: agentName,
+      }, 502, origin);
+    }
+  }
+
+  // =============================================
+  // INTELLIGENCE ACTION HANDLER
+  // =============================================
+  if (action === "intelligence") {
+    const userId = String(body.userId || "").trim();
+    const answers = body.answers || {};
+
+    // Validate required fields
+    if (!userId || Object.keys(answers).length === 0) {
+      return json({
+        success: false,
+        error: "userId and answers are required"
+      }, 400, origin);
+    }
+
+    try {
+      // Step 1: Determine superpower from quiz answers
+      const quizResult = await runStructuredAgent("quiz", { answers });
+      if (!quizResult || !quizResult.data) {
+        throw new Error("Quiz analysis failed to return data");
+      }
+
+      const superpowerName = quizResult.data.superpowerName || "Builder";
+      const niche = String(body.niche || superpowerName || "digital business");
+
+      // Step 2: Generate personalized roadmap, passing all market signals
+      const marketSignals: JsonRecord = {
+        profitabilityScore: body.profitabilityScore ?? null,
+        competitionLevel: body.competitionLevel ?? null,
+        trendStrength: body.trendStrength ?? null,
+        nicheViability: body.nicheViability ?? null,
+        audienceInsight: body.audienceInsight ?? null,
+        opportunityGaps: body.opportunityGaps ?? [],
+        privacyNeeds: body.privacyNeeds ?? null,
+        energyLevel: body.energyLevel ?? null,
+        burnoutRisk: body.burnoutRisk ?? null,
+        aiTools: body.aiTools ?? [],
+      };
+
+      const roadmapResult = await runStructuredAgent("roadmap", {
+        name: userId.split('@')[0] || "Builder",
+        superpower: superpowerName.toLowerCase() || "builder",
+        answers,
+        profile: {},
+        goal: "Build faceless digital real estate that supports retirement and creates a transferable family asset",
+        ...marketSignals,
+      });
+
+      // Step 3: Aggregate the remaining four analyses
+      const audience = analyzeAudience(niche);
+      const competition = analyzeCompetition(niche);
+      const trends = analyzeTrends(niche);
+      const opportunities = analyzeOpportunities(niche);
+
+      const intelligenceData: JsonRecord = {
+        superpower: superpowerName,
+        superpowerDescription: quizResult.data.superpowerDescription || "",
+        recommendations: quizResult.data.recommendedPathways || [],
+        confidenceScore: quizResult.data.confidenceScore || 0.85,
+        roadmap: roadmapResult.data || null,
+        ...marketSignals,
+        audience,
+        competition,
+        trends,
+        opportunities,
+        niche,
+        rawQuizResult: quizResult.data,
+      };
+
+      // Step 4: Persist (guarded) — superpower profile, roadmap, intelligence,
+      // niche scoring, and trend data.
+      await guardInsert("superpower_profiles", {
+        user_id: userId,
+        superpower_name: superpowerName,
+        roadmap: intelligenceData.roadmap,
+        data: intelligenceData,
+      });
+      await guardInsert("quiz_roadmaps", {
+        user_id: userId,
+        superpower: superpowerName,
+        answers,
+        roadmap: intelligenceData.roadmap,
+        source: "intelligence",
+      });
+      await guardInsert("intelligence_results", { user_id: userId, data: intelligenceData });
+      if (intelligenceData.profitabilityScore != null) {
+        await guardInsert("niche_scores", {
+          user_id: userId,
+          profitability_score: intelligenceData.profitabilityScore,
+          competition_level: intelligenceData.competitionLevel,
+          trend_strength: intelligenceData.trendStrength,
+          niche_viability: intelligenceData.nicheViability,
+          data: intelligenceData,
+        });
+      }
+      await guardInsert("trends", { user_id: userId, data: trends });
+
+      return json({ success: true, data: intelligenceData }, 200, origin);
+    } catch (error) {
+      console.error("[intelligence] Error:", error);
+      return json({
+        success: false,
+        error: error instanceof Error ? error.message : String(error)
+      }, 500, origin);
+    }
+  }
+
+  if (action === "dashboard") return json(dashboardData, 200, origin);
+  if (action === "automation.list") return json({ automations: dashboardData.automations }, 200, origin);
+   if (action === "personalize") {
+     const result = await runOptimizationLoop({ signals: body.signals || [] });
+     return json({ success: true, data: result.personalization }, 200, origin);
+   }
+   if (action === "events") {
+     const { guardInsert } = await import('../lib/persist.js');
+     const events = Array.isArray(body.events) ? body.events : [];
+     let saved = 0;
+     for (const e of events) {
+       const row = await guardInsert('optimization_signals', {
+         user_id: body.userId || null,
+         event: e?.event || 'page',
+         page: e?.page || null,
+         payload: e || {},
+       });
+       if (row?.ok !== false) saved += 1;
+     }
+     return json({ success: true, ingested: saved }, 200, origin);
+   }
+   if (action === "optimization.loop") {
+     const signals = body.signals || [];
+     const loop = await runOptimizationLoop({ signals });
+     await guardInsert('personalization', { user_id: body.userId || null, data: loop.personalization });
+     await guardInsert('user_clusters', { user_id: body.userId || null, cluster_key: loop.clusters[0]?.key || 'general', cluster: loop.clusters[0] || {} });
+     return json({ success: true, clusters: loop.clusters, signalCount: loop.signals.length }, 200, origin);
+   }
+   if (action === "optimization.weekly") {
+     const signals = await (async () => {
+       const url = Deno.env.get("SUPABASE_URL") || "";
+       const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+       if (!url || !key) return [];
+       try {
+         const res = await fetch(`${url}/rest/v1/optimization_signals?select=*&limit=5000`, {
+           headers: { apikey: key, Authorization: `Bearer ${key}` });
+         return res.ok ? await res.json() : [];
+       } catch { return []; }
+     })();
+     const period = new Date().toISOString().slice(0, 10);
+     const report = { period, signalCount: signals.length, generatedAt: new Date().toISOString() };
+     await insertRow('weekly_reports', { period, report });
+     return json({ success: true, period, report }, 200, origin);
+   }
+   if (action === "dashboard") return json(dashboardData, 200, origin);
+  if (action === "status" || action === "routes") {
+    return json({
+      ok: true,
+      status: "running",
+      timestamp: Date.now(),
+      routes: ["subscribe", "contact", "quiz.complete", "public.chat", "dashboard", "automation.list", "agent.quiz", "agent.niche", "agent.roadmap", "agent.scorecard", "agent.retirement-guide", "agent.asset-plan", "agent.offer-architect", "agent.wealth", "agent.reputation", "intelligence", "chat"],
+    }, 200, origin);
+  }
+
+  const conversation = Array.isArray(body.conversation)
+    ? body.conversation
+    : Array.isArray(body.messages)
+      ? body.messages
+      : [];
+  const message = String(body.message || body.content || body.text || "").trim();
+  if (!message) return json({ error: "Missing or invalid message field" }, 400, origin);
+
+  try {
+    const result = await runAI(
+      String(body.systemPrompt || "You are the private DigitallyDefined operations assistant. Be concise, practical, and accurate."),
+      `${conversation.length ? `Conversation: ${JSON.stringify(conversation)}\n\n` : ""}${message}`,
+    );
+    return json({
+      reply: result.reply,
+      provider: result.provider,
+      model: result.model,
+      error: null,
+      conversationUpdates: [],
+      dashboardSnapshotUpdate: body.context || null,
+    }, 200, origin);
+  } catch (error) {
+    return json({
+      reply: "",
+      provider: "error",
+      model: null,
+      error: error instanceof Error ? error.message : String(error),
+    }, 502, origin);
+  }
+});

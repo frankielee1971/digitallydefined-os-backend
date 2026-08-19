@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DigitallyDefined - Freedom Number Calculator</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter with ultra bold weights -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <!-- Chart.js for beautiful analytics visual -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Lucide Icons for aesthetic SVG icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #FFFBF4; /* Warm Soft Cream Background */
+            color: #2D3748;
+        }
+
+        /* Subtle, refined 1px border range slider with flat shadow */
+        /* Subtle, refined 1px border range slider */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 20px;
+            width: 20px;
+            border-radius: 0px; /* Squared */
+            background: #F18B25; /* Brand Orange */
+            border: 1px solid #000000;
+            cursor: pointer;
+            margin-top: -8px;
+        }
+        
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 6px;
+            cursor: pointer;
+            background: #FFFFFF;
+            border: 1px solid #000000;
+            border-radius: 0px; /* Squared */
+        }
+        
+        input[type=range]:focus {
+            outline: none;
+        }
+
+        /* Theme adjustments for secondary asset inputs */
+        .slider-blue::-webkit-slider-thumb {
+            background: #47B7D4 !important;
+        }
+        .slider-slate::-webkit-slider-thumb {
+            background: #2D3748 !important;
+        }
+    </style>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brandOrange: '#F18B25',
+                        brandBlue: '#47B7D4',
+                        accentRed: '#C20F0A',
+                        warmBg: '#FFFBF4',
+                        slateDark: '#2D3748',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="min-h-screen flex flex-col justify-between selection:bg-brandOrange selection:text-white pb-12">
+
+    <!-- Navigation / Header with 1px black border -->
+    <header class="border-b border-black bg-white sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <!-- Branding Logo Box -->
+                <div class="w-8 h-8 border border-black bg-brandOrange flex items-center justify-center">
+                    <span class="text-white font-black text-base">DD</span>
+                </div>
+                <div>
+                    <span class="font-black text-lg sm:text-xl tracking-tight text-black">
+                        <span class="text-black">DIGITALLY</span><span class="text-brandOrange italic">DEFINED</span>
+                    </span>
+                    <p class="text-[8px] uppercase tracking-wider text-brandBlue font-extrabold block mt-[-4px]">Sovereign Wealth for Gen X Women</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-3">
+                <span class="hidden md:inline-flex items-center px-2.5 py-1 border border-black bg-orange-50 text-black text-[10px] font-bold">
+                    <span class="w-2 h-2 bg-brandOrange border border-black mr-1.5"></span> Retirement Gap Solver
+                </span>
+                <button onclick="document.getElementById('calculator-section').scrollIntoView({behavior: 'smooth'})" 
+                        class="px-3.5 py-1.5 bg-black hover:bg-brandOrange text-white hover:text-black font-bold border border-black transition-all text-xs">
+                    Launch Calculator
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-grow">
+        <!-- Hero Section -->
+        <section class="relative bg-white border-b border-black py-12 sm:py-16 px-4 sm:px-6 lg:px-8">
+            <div class="max-w-3xl mx-auto text-center relative z-10">
+                <span class="inline-flex items-center px-3 py-1 border border-black bg-brandBlue text-black text-[10px] font-bold uppercase tracking-wider mb-4">
+                    Close The Retirement Gap
+                </span>
+                <h1 class="text-3xl sm:text-5xl font-black tracking-tight text-black leading-tight mb-4">
+                    CALCULATE YOUR <br>
+                    <span class="bg-brandOrange text-white px-2 py-0.5 inline-block border border-black transform -rotate-1 mt-1">FREEDOM NUMBER</span>
+                </h1>
+                <p class="text-sm sm:text-base text-black max-w-xl mx-auto font-medium leading-relaxed mb-6 mt-4">
+                    Traditional retirement portfolios are built on 40 years of financial erosion. Discover how <strong class="underline decoration-brandOrange decoration-1">faceless digital real estate assets</strong> allow Gen X women to bypass decades of stress and build a predictable, legacy cashflow generator.
+                </p>
+                <div class="flex flex-wrap justify-center gap-3">
+                    <button onclick="document.getElementById('calculator-section').scrollIntoView({behavior: 'smooth'})" 
+                            class="px-6 py-3 bg-brandOrange hover:bg-white text-white hover:text-black font-black border border-black transition-all text-sm">
+                        Build Your Portfolio Map &rarr;
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Calculator Workspace -->
+        <section id="calculator-section" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                
+                <!-- Left Column: Inputs & Sliders -->
+                <div class="lg:col-span-7 space-y-6">
+                    
+                    <!-- Step 1: Freedom Target -->
+                    <div class="bg-white p-5 sm:p-6 border border-black">
+                        <h2 class="text-lg font-black text-black flex items-center gap-2">
+                            <span class="flex items-center justify-center w-6 h-6 border border-black bg-brandOrange text-white text-xs font-black">01</span>
+                            Your Freedom Target
+                        </h2>
+                        <p class="text-xs font-medium text-gray-700 mt-1">What monthly passive cash flow is required to completely replace your salary and secure independence?</p>
+                        
+                        <div class="mt-4 space-y-3">
+                            <div class="flex justify-between items-center">
+                                <label for="freedomGoal" class="text-xs font-black text-black">Monthly Freedom Goal</label>
+                                <span class="px-2.5 py-0.5 bg-white border border-black text-brandOrange font-black text-base" id="freedomGoalDisplay">$5,000</span>
+                            </div>
+                            <input type="range" id="freedomGoal" min="2000" max="25000" step="500" value="5000" oninput="calculate()">
+                            <div class="flex justify-between text-[10px] text-black font-bold uppercase">
+                                <span>$2k/mo</span>
+                                <span>$13.5k/mo</span>
+                                <span>$25k/mo</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step 2: Build the Portfolio -->
+                    <div class="bg-white p-5 sm:p-6 border border-black space-y-4">
+                        <h2 class="text-lg font-black text-black flex items-center gap-2">
+                            <span class="flex items-center justify-center w-6 h-6 border border-black bg-brandBlue text-black text-xs font-black">02</span>
+                            Your Digital Real Estate Mix
+                        </h2>
+                        <p class="text-xs font-medium text-gray-700 mt-1">Acquire and deploy faceless, automated digital assets. Adjust your portfolio quantities and expected average monthly yield based on industry data.</p>
+
+                        <!-- The 10x ROI Rule Callout (Refined, 1px border) -->
+                        <div class="bg-white border border-black p-4">
+                            <div class="flex items-start gap-2.5">
+                                <span class="p-1 border border-black bg-brandOrange text-white flex-shrink-0">
+                                    <i data-lucide="lightbulb" class="w-4 h-4"></i>
+                                </span>
+                                <div>
+                                    <h4 class="font-black text-xs uppercase tracking-wide text-brandOrange mb-0.5">The 10x ROI Rule</h4>
+                                    <p class="text-xs text-black leading-relaxed font-semibold italic">
+                                        "If a site or asset produces $10,000 in value or revenue for a contractor, a $1,000 monthly acquisition or rent fee is an essential utility, not a luxury. That is why these digital assets command high, stable yields."
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="space-y-4">
+                            <!-- Asset 1: Template Hubs -->
+                            <div class="p-4 bg-white border border-black">
+                                <div class="flex justify-between items-center mb-2">
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="p-1 border border-black bg-brandOrange text-white"><i data-lucide="layout-template" class="w-3.5 h-3.5"></i></span>
+                                        <span class="font-black text-black text-xs sm:text-sm">Template Hubs / Printables</span>
+                                    </div>
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="text-[10px] font-black text-black uppercase">Qty:</span>
+                                        <input type="number" id="qtyTemplates" min="0" max="10" value="2" 
+                                               class="w-12 p-0.5 border border-black text-center font-black text-black text-xs focus:outline-none focus:bg-orange-50" oninput="calculate()">
+                                    </div>
+                                </div>
+                                <div class="space-y-1.5">
+                                    <div class="flex justify-between text-[10px] font-bold text-gray-700">
+                                        <span>Average Yield (Range: $50 - $2,000/mo)</span>
+                                        <span id="yieldTemplatesDisplay" class="font-black text-brandOrange">$1,000/mo</span>
+                                    </div>
+                                    <input type="range" id="yieldTemplates" min="50" max="2000" step="50" value="1000" oninput="calculate()">
+                                </div>
+                            </div>
+
+                            <!-- Asset 2: Paid Newsletters -->
+                            <div class="p-4 bg-white border border-black">
+                                <div class="flex justify-between items-center mb-2">
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="p-1 border border-black bg-brandBlue text-black"><i data-lucide="mail" class="w-3.5 h-3.5"></i></span>
+                                        <span class="font-black text-black text-xs sm:text-sm">Paid Newsletters (Mid-Tier)</span>
+                                    </div>
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="text-[10px] font-black text-black uppercase">Qty:</span>
+                                        <input type="number" id="qtyNewsletters" min="0" max="10" value="1" 
+                                               class="w-12 p-0.5 border border-black text-center font-black text-black text-xs focus:outline-none focus:bg-cyan-50" oninput="calculate()">
+                                    </div>
+                                </div>
+                                <div class="space-y-1.5">
+                                    <div class="flex justify-between text-[10px] font-bold text-gray-700">
+                                        <span>Average Yield (Range: $2,000 - $10,000/mo)</span>
+                                        <span id="yieldNewslettersDisplay" class="font-black text-brandBlue">$4,500/mo</span>
+                                    </div>
+                                    <input type="range" id="yieldNewsletters" min="2000" max="10000" step="250" value="4500" class="slider-blue" oninput="calculate()">
+                                </div>
+                            </div>
+
+                            <!-- Asset 3: YouTube Automation -->
+                            <div class="p-4 bg-white border border-black">
+                                <div class="flex justify-between items-center mb-2">
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="p-1 border border-black bg-slateDark text-white"><i data-lucide="youtube" class="w-3.5 h-3.5"></i></span>
+                                        <span class="font-black text-black text-xs sm:text-sm">YouTube Automation</span>
+                                    </div>
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="text-[10px] font-black text-black uppercase">Qty:</span>
+                                        <input type="number" id="qtyYoutube" min="0" max="10" value="0" 
+                                               class="w-12 p-0.5 border border-black text-center font-black text-black text-xs focus:outline-none focus:bg-gray-100" oninput="calculate()">
+                                    </div>
+                                </div>
+                                <div class="space-y-1.5">
+                                    <div class="flex justify-between text-[10px] font-bold text-gray-700">
+                                        <span>Average Yield (Range: $500 - $10,000/mo)</span>
+                                        <span id="yieldYoutubeDisplay" class="font-black text-slateDark">$3,000/mo</span>
+                                    </div>
+                                    <input type="range" id="yieldYoutube" min="500" max="10000" step="250" value="3000" class="slider-slate" oninput="calculate()">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Current Portfolio Total Box -->
+                        <div class="p-4 border border-black bg-black text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                            <div>
+                                <span class="block text-[10px] font-black uppercase tracking-wider text-brandOrange">Projected Portfolio Income</span>
+                                <span class="block text-2xl font-black tracking-tight" id="totalMonthlyIncomeDisplay">$0</span>
+                            </div>
+                            <div class="sm:text-right w-full sm:w-auto border-t sm:border-t-0 border-gray-800 pt-2 sm:pt-0">
+                                <span class="block text-[10px] font-black uppercase tracking-wider text-brandBlue">Goal Status</span>
+                                <span class="block text-sm font-black uppercase" id="goalStatusDisplay">...</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step 3: The Exit Multiplier -->
+                    <div class="bg-white p-5 sm:p-6 border border-black">
+                        <h2 class="text-lg font-black text-black flex items-center gap-2">
+                            <span class="flex items-center justify-center w-6 h-6 border border-black bg-black text-white text-xs font-black">03</span>
+                            The Capital Gains Multiplier (The Exit) 🚨
+                        </h2>
+                        <p class="text-xs font-medium text-gray-700 mt-1 mb-4">Digital assets aren't just cash flow; they are sellable entities. Market valuations for profitable digital real estate range from 30x to 40x monthly net profit.</p>
+                        
+                        <div class="space-y-3 mb-6">
+                            <div class="flex justify-between items-center">
+                                <label for="multiplier" class="text-xs font-black text-black">Market Multiplier (applied to net profit)</label>
+                                <span class="px-2.5 py-0.5 bg-white border border-black text-black font-black text-base" id="multiplierDisplay">35x</span>
+                            </div>
+                            <input type="range" id="multiplier" min="30" max="40" step="1" value="35" class="slider-slate" oninput="calculate()">
+                            <div class="flex justify-between text-[10px] text-black font-bold uppercase">
+                                <span>30x (Conservative)</span>
+                                <span>40x (Premium)</span>
+                            </div>
+                        </div>
+
+                        <!-- Refined Liquidation Value Container -->
+                        <div class="text-center py-6 border border-black bg-[#47B7D4]/5 mb-4">
+                            <span class="block text-[10px] font-black uppercase tracking-wider text-black mb-0.5">Estimated Portfolio Liquidation Value</span>
+                            <div class="text-3xl sm:text-5xl font-black text-black tracking-tight" id="liquidationValueDisplay">
+                                $0
+                            </div>
+                        </div>
+
+                        <!-- Warning Deep Red Callout -->
+                        <div class="bg-[#FFF5F5] border border-accentRed p-4 flex items-start gap-3">
+                            <div class="p-1.5 border border-black bg-accentRed text-white flex-shrink-0">
+                                <i data-lucide="shield-alert" class="w-5 h-5"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-black text-accentRed text-xs uppercase mb-0.5">🚨 Protect Your Sovereignty</h4>
+                                <p class="text-xs text-black leading-relaxed font-bold">
+                                    Achievement is only true freedom if it is protected. Meticulously catalog these assets in your <span class="underline decoration-accentRed decoration-1">Digital Inheritance Vault</span>.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Right Column: The Comparison -->
+                <div class="lg:col-span-5 lg:sticky lg:top-20 space-y-6">
+                    <div class="bg-white p-5 sm:p-6 border border-black">
+                        <h3 class="text-base font-black text-black flex items-center gap-1.5 mb-1">
+                            <span class="flex items-center justify-center w-6 h-6 border border-black bg-brandBlue text-black text-xs font-black">04</span>
+                            The ROI Contrast 🌊
+                        </h3>
+                        <p class="text-xs font-medium text-gray-700 mb-4 pb-4 border-b border-black">A 24-month horizon comparing Traditional Savings vs. Digital Sovereign Wealth.</p>
+                        
+                        <!-- Chart Container (Refined 1px flat style) -->
+                        <div class="w-full h-48 mb-6 relative border border-black p-2 bg-white">
+                            <canvas id="roiChart"></canvas>
+                        </div>
+
+                        <!-- Comparison Stats & Table -->
+                        <div class="space-y-4">
+                            <h4 class="font-black text-xs uppercase tracking-wide text-black pb-1.5 border-b border-black">24-Month Projection Comparison</h4>
+                            
+                            <div class="overflow-x-auto border border-black">
+                                <table class="w-full text-left text-xs font-bold bg-white">
+                                    <thead>
+                                        <tr class="bg-black text-white border-b border-black">
+                                            <th class="p-2.5">Metric</th>
+                                            <th class="p-2.5">Inflation Erosion</th>
+                                            <th class="p-2.5 bg-brandBlue text-black">Sovereign Wealth</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-black">
+                                        <tr>
+                                            <td class="p-2.5 font-black bg-gray-50">Strategy</td>
+                                            <td class="p-2.5 text-accentRed flex items-center gap-1">
+                                                <i data-lucide="trending-down" class="w-3.5 h-3.5"></i> Trad. Savings
+                                            </td>
+                                            <td class="p-2.5 text-brandBlue bg-brandBlue/5 flex items-center gap-1 font-black">
+                                                <i data-lucide="crown" class="w-3.5 h-3.5"></i> Digital Assets
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td class="p-2.5 font-black bg-gray-50">12m Outlook</td>
+                                            <td class="p-2.5" id="trad12mDisplay">$12,000</td>
+                                            <td class="p-2.5 bg-brandBlue/5 font-black" id="dig12mDisplay">$0</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="p-2.5 font-black bg-gray-50">24m Liquidity</td>
+                                            <td class="p-2.5" id="trad24mDisplay">$24,000</td>
+                                            <td class="p-2.5 bg-brandBlue/5 font-black text-brandOrange" id="dig24mDisplay">$0</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <button onclick="window.open('https://facebook.com', '_blank')" class="w-full py-3 bg-black hover:bg-brandOrange text-white hover:text-black font-black border border-black transition-all flex justify-center items-center gap-1.5 text-xs">
+                                Access Digital Asset Blueprints <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        // Initialize Icons
+        lucide.createIcons();
+
+        // Chart configuration with exact squared-edge theme matching
+        let roiChart;
+        const ctx = document.getElementById('roiChart').getContext('2d');
+
+        function initChart() {
+            roiChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['Month 12', 'Month 24'],
+                    datasets: [
+                        {
+                            label: 'Inflation Erosion (Savings)',
+                            data: [12000, 24000],
+                            backgroundColor: '#C20F0A', // Deep Accent Red
+                            borderColor: '#000000',
+                            borderWidth: 1,
+                            borderRadius: 0, // Squared bars
+                            barPercentage: 0.5,
+                            categoryPercentage: 0.8
+                        },
+                        {
+                            label: 'Sovereign Wealth (Digital)',
+                            data: [0, 0], // Replaced dynamically on render logic
+                            backgroundColor: '#47B7D4', // Aqua Blue
+                            borderColor: '#000000',
+                            borderWidth: 1,
+                            borderRadius: 0, // Squared bars
+                            barPercentage: 0.5,
+                            categoryPercentage: 0.8
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                font: { family: "'Inter', sans-serif", size: 9, weight: 'bold' },
+                                boxWidth: 10,
+                                color: '#000000'
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: '#000000',
+                            titleFont: { family: "'Inter', sans-serif", size: 11, weight: 'bold' },
+                            bodyFont: { family: "'Inter', sans-serif", size: 10 },
+                            cornerRadius: 0
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            border: { width: 1, color: '#000000' },
+                            grid: { color: '#E2E8F0', drawOnChartArea: true },
+                            ticks: {
+                                callback: function(value) {
+                                    if(value >= 1000000) return '$' + (value / 1000000).toFixed(1) + 'M';
+                                    if(value >= 1000) return '$' + (value / 1000) + 'k';
+                                    return '$' + value;
+                                },
+                                font: { family: "'Inter', sans-serif", size: 9, weight: 'bold' },
+                                color: '#000000'
+                            }
+                        },
+                        x: {
+                            border: { width: 1, color: '#000000' },
+                            grid: { display: false },
+                            ticks: { font: { family: "'Inter', sans-serif", size: 10, weight: 'black' }, color: '#000000' }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Format currency helper
+        const formatMoney = (amount) => {
+            return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount);
+        };
+
+        function calculate() {
+            // 1. Get Inputs
+            const freedomGoal = parseFloat(document.getElementById('freedomGoal').value);
+            
+            const qtyTemplates = parseFloat(document.getElementById('qtyTemplates').value) || 0;
+            const yieldTemplates = parseFloat(document.getElementById('yieldTemplates').value);
+            
+            const qtyNewsletters = parseFloat(document.getElementById('qtyNewsletters').value) || 0;
+            const yieldNewsletters = parseFloat(document.getElementById('yieldNewsletters').value);
+            
+            const qtyYoutube = parseFloat(document.getElementById('qtyYoutube').value) || 0;
+            const yieldYoutube = parseFloat(document.getElementById('yieldYoutube').value);
+            
+            const multiplier = parseFloat(document.getElementById('multiplier').value);
+
+            // 2. Update Label Displays
+            document.getElementById('freedomGoalDisplay').innerText = formatMoney(freedomGoal);
+            document.getElementById('yieldTemplatesDisplay').innerText = formatMoney(yieldTemplates) + '/mo';
+            document.getElementById('yieldNewslettersDisplay').innerText = formatMoney(yieldNewsletters) + '/mo';
+            document.getElementById('yieldYoutubeDisplay').innerText = formatMoney(yieldYoutube) + '/mo';
+            document.getElementById('multiplierDisplay').innerText = multiplier + 'x';
+
+            // 3. Asset and Liquidation Yield Calculations
+            const incomeTemplates = qtyTemplates * yieldTemplates;
+            const incomeNewsletters = qtyNewsletters * yieldNewsletters;
+            const incomeYoutube = qtyYoutube * yieldYoutube;
+            
+            const totalMonthlyIncome = incomeTemplates + incomeNewsletters + incomeYoutube;
+            const liquidationValue = totalMonthlyIncome * multiplier;
+
+            // Goal status indicator rendering
+            let statusHtml = '';
+            if (totalMonthlyIncome >= freedomGoal) {
+                statusHtml = '<span class="text-brandBlue font-black flex items-center gap-1"><i data-lucide="check-square" class="w-4 h-4"></i> GOAL ACHIEVED</span>';
+            } else {
+                const gap = freedomGoal - totalMonthlyIncome;
+                statusHtml = `<span class="text-accentRed font-black">GAP: ${formatMoney(gap)}/mo</span>`;
+            }
+
+            // Calculation mapping projection: 24-month horizon building assets vs traditional bank savings
+            // Traditional models save $1k monthly. Digital compounds asset build values and resale opportunities
+            const accumulatedCashflow12m = (totalMonthlyIncome * 12) * 0.55; 
+            const accumulatedCashflow24m = (totalMonthlyIncome * 24) * 0.8; 
+            
+            const digitalMonth12 = accumulatedCashflow12m + (totalMonthlyIncome * (multiplier * 0.8));
+            const digitalMonth24 = accumulatedCashflow24m + liquidationValue;
+
+            // 4. Update UI Outputs
+            document.getElementById('totalMonthlyIncomeDisplay').innerText = formatMoney(totalMonthlyIncome);
+            document.getElementById('goalStatusDisplay').innerHTML = statusHtml;
+            document.getElementById('liquidationValueDisplay').innerText = formatMoney(liquidationValue);
+            
+            // Table Values Updates
+            document.getElementById('dig12mDisplay').innerText = formatMoney(digitalMonth12);
+            document.getElementById('dig24mDisplay').innerText = formatMoney(digitalMonth24);
+            
+            // Reinitialize Lucide Icons inside dynamically updated html
+            lucide.createIcons();
+
+            // 5. Update Chart Values & Redraw Chart
+            if (roiChart) {
+                roiChart.data.datasets[1].data = [digitalMonth12, digitalMonth24];
+                roiChart.update();
+            }
+        }
+
+        // Initialize elements onload
+        window.onload = function() {
+            initChart();
+            calculate();
+        };
+    </script>
+</body>
+</html>

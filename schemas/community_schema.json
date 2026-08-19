@@ -1,0 +1,79 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://digitallydefined.online/schemas/community.json",
+  "title": "Community Content Schema",
+  "description": "JSON Schema for Community access product",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Title of the content silo",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of the content",
+      "minLength": 1
+    },
+    "content_type": {
+      "type": "string",
+      "description": "Type of content (e.g., ebook, course, template)",
+      "enum": [
+        "membership",
+        "community_access",
+        "mastermind",
+        "group_coaching"
+      ]
+    },
+    "target_audience": {
+      "type": "string",
+      "description": "Target audience for this content",
+      "minLength": 1
+    },
+    "value_proposition": {
+      "type": "string",
+      "description": "Core value proposition",
+      "minLength": 1
+    },
+    "price": {
+      "type": "number",
+      "minimum": 0
+    },
+    "billing_cycle": {
+      "type": "string",
+      "enum": [
+        "monthly",
+        "quarterly",
+        "annual",
+        "lifetime"
+      ]
+    },
+    "features": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of community features"
+    },
+    "member_count": {
+      "type": "integer",
+      "description": "Current number of members"
+    }
+  },
+  "required": [
+    "title",
+    "description",
+    "content_type",
+    "target_audience",
+    "value_proposition"
+  ],
+  "additionalProperties": true,
+  "metadata": {
+    "generated_at": "2026-07-14T17:47:19.290274Z",
+    "generator": "Hermes ContentSchemaGenerator",
+    "version": "1.0.0",
+    "funnel_stage": "Community",
+    "funnel_order": 4
+  }
+}

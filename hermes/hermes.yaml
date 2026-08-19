@@ -1,0 +1,246 @@
+# ============================================================
+# Hermes OS - Main Configuration
+# Location: DigitallyDefined OS/config/hermes.yaml
+# ============================================================
+
+# ============================================================
+# INTEGRATIONS
+# ============================================================
+
+integrations:
+  digitallydefined:
+    path: DigitallyDefined OS/integrations/hermes/hermes_connector.py
+    enabled: true
+  
+  trends_api:
+    endpoint: https://api.digitallydefined.online/trends
+    key: ${TRENDS_API_KEY}
+    enabled: true
+  
+  serp_api:
+    endpoint: https://serpapi.com/search.json
+    key: ${SERP_API_KEY}
+    enabled: true
+    monthly_limit: 250
+
+# ============================================================
+# PROVIDERS
+# ============================================================
+
+providers:
+  # Local Ollama (free, offline-capable)
+  ollama:
+    type: ollama
+    url: http://localhost:11434
+    description: "Local LLM runtime for zero-cost inference"
+    status: optional
+    fallback_priority: 1
+
+  # Bluesminds (primary paid tier)
+  bluesminds:
+    type: openai-compatible
+    api_key: ${BLUESMINDS_API_KEY}
+    base_url: https://api.bluesminds.ai/v1
+    description: "Primary paid AI provider with premium models"
+    status: recommended
+    fallback_priority: 2
+
+  # StepFun (free tier with credits)
+  stepfun:
+    type: openai-compatible
+    api_key: ${STEPFUN_API_KEY}
+    base_url: https://api.stepfun.com/v1
+    description: "Free tier with daily credits"
+    status: recommended
+    fallback_priority: 3
+
+  # Agnes AI (free fallback)
+  agnes:
+    type: openai-compatible
+    api_key: ${AGNES_API_KEY}
+    base_url: https://api.agnes.ai/v1
+    description: "Free AI models for fallback"
+    status: optional
+    fallback_priority: 4
+
+  # Mistral (fallback)
+  mistral:
+    type: mistral
+    api_key: ${MISTRAL_API_KEY}
+    description: "Fallback text model"
+    status: optional
+    fallback_priority: 5
+
+# ============================================================
+# MODELS
+# ============================================================
+
+models:
+  # Zero-cost local models
+  local:
+    provider: ollama
+    model: qwen2.5:7b
+
+  coder:
+    provider: ollama
+    model: qwen2.5-coder:7b
+
+  # StepFun free tier
+  stepfun_free:
+    provider: stepfun
+    model: stepfun/step-3.7-flash:free
+
+  stepfun_premium:
+    provider: stepfun
+    model: stepfun/step-3.7-flash
+
+  # Agnes free models
+  agnes_flash_2_0:
+    provider: agnes
+    model: agnes-2.0-flash
+
+  agnes_flash_2_5:
+    provider: agnes
+    model: agnes-2.5-flash
+
+  # Bluesminds premium models
+  deepseek:
+    provider: bluesminds
+    model: bluesminds/deepseek-r1
+
+  openai:
+    provider: bluesminds
+    model: bluesminds/gpt-4.1-mini
+
+  google:
+    provider: bluesminds
+    model: bluesminds/gemini-3.5-flash
+
+  hermes_3:
+    provider: bluesminds
+    model: bluesminds/hermes-3
+
+  hermes_3_coder:
+    provider: bluesminds
+    model: bluesminds/hermes-3-coder
+
+  # Fallback text model
+  mistral:
+    provider: mistral
+    model: mistral-large-latest
+
+# ============================================================
+# ROUTING RULES
+# ============================================================
+
+routing:
+  # Text tasks
+  - when: seo_research
+    use: deepseek
+
+  - when: strategy
+    use: deepseek
+
+  - when: reasoning
+    use: deepseek
+
+  - when: creative
+    use: openai
+
+  - when: long_form
+    use: openai
+
+  - when: fast
+    use: google
+
+  - when: summaries
+    use: google
+
+  - when: coding
+    use: hermes_3_coder
+
+  # Image tasks
+  - when: brand_image
+    use: flux_dev
+
+  - when: thumbnail
+    use: flux_schnell
+
+  # Video tasks
+  - when: broll
+    use: dream_machine
+
+  - when: cinematic
+    use: kling
+
+  # Safety net
+  - when: fallback
+    use: mistral
+
+  # Default
+  - default: stepfun_free
+
+# ============================================================
+# AGENTOPS INTEGRATION
+# ============================================================
+
+agentops:
+  enabled: true
+  api_key: ${AGENTOPS_API_KEY}
+  project: "hermes-os-francescas-brain"
+  environment: "development"
+
+  telemetry:
+    enabled: true
+    log_llm_calls: true
+    log_tool_calls: true
+    log_agent_actions: true
+    track_credits: true
+    track_latency: true
+
+  session:
+    auto_start: true
+    auto_end: true
+    tags:
+      - "hermes-os"
+      - "francescas-brain"
+      - "digitallydefined"
+
+  alerts:
+    enabled: true
+    notify_on_error: true
+    notify_on_credit_depletion: true
+    webhook_url: ""
+
+# ============================================================
+# TELEMETRY
+# ============================================================
+
+telemetry:
+  enabled: true
+  fields:
+    - model_used
+    - fallback_triggered
+    - retry_attempts
+    - routing_decision
+    - reasoning_depth
+    - agentops_session_id
+
+# ============================================================
+# RETRY LOGIC
+# ============================================================
+
+retry:
+  attempts: 1
+  escalate_on_failure: true
+
+# ============================================================
+# PATHS
+# ============================================================
+
+paths:
+  config: "DigitallyDefined OS/config/"
+  agents: "DigitallyDefined OS/agents/"
+  workflows: "DigitallyDefined OS/workflows/"
+  kanban: "DigitallyDefined OS/kanban/"
+  logs: "logs/"

@@ -1,0 +1,178 @@
+# ============================================
+# HERMES - Authority Silo Architect Builder
+# ============================================
+
+# Funnel: Lead Magnet → Core Offer → Authority Bundle → Community → Recurring Revenue
+# Each silo contains JSON Schema-based content that can be:
+# - Generated automatically
+# - Validated for consistency
+# - Packaged for distribution
+# - Expanded with new content
+
+# ------------------------------------------------
+# Hermes Model Gateway
+# ------------------------------------------------
+model:
+  provider: "openai"
+  apiBaseUrl: "http://localhost:20128/v1"
+  apiKey: "none"
+
+# ------------------------------------------------
+# Agent Configuration
+# ------------------------------------------------
+agent:
+  name: "AuthoritySiloArchitectBuilder"
+  version: "1.0.0"
+  description: "Automates creation, validation, and packaging of JSON Schema-based content silos"
+
+  # Primary Agent Role
+  role: |
+    The Authority Silo Architect Builder is responsible for:
+    1. Generating content schemas for each silo in the funnel
+    2. Validating schemas against JSON Schema standards
+    3. Packaging content for Gumroad distribution
+    4. Managing schema expansion and version control
+    5. Integrating with Supabase for data persistence
+    6. Syncing with Notion for content management
+
+  # Agent Architecture
+  architecture:
+    primary_agent: "AuthoritySiloArchitect"
+
+    sub_agents:
+      - name: "ContentSchemaGenerator"
+        module: "modules.content_schema_generator"
+        function: "generate_schema"
+        description: "Generates JSON schemas for content silos"
+
+      - name: "SchemaValidator"
+        module: "modules.schema_validator"
+        function: "validate_schema"
+        description: "Validates schemas against JSON Schema standards"
+
+      - name: "ProductPackager"
+        module: "modules.product_packager"
+        function: "package_product"
+        description: "Packages content for Gumroad distribution"
+
+      - name: "ExpansionManager"
+        module: "modules.expansion_manager"
+        function: "manage_expansion"
+        description: "Manages schema expansion and version control"
+
+  # Enhancements
+  enhancements:
+    logging:
+      enabled: true
+      log_path: "logs/"
+      log_level: "INFO"
+      log_file: "authority_silo_architect.log"
+
+    version_control:
+      enabled: true
+      schema: "semantic"
+
+    monthly_schema_updates:
+      enabled: true
+      schedule: "monthly"
+
+    automation:
+      schedule:
+        - task: "manage_expansion"
+          frequency: "monthly"
+          description: "Push new schema drops to the DigitallyDefined community"
+
+    integrations:
+      - name: "Gumroad"
+        type: "commerce"
+        api_key: "${GUMROAD_API_KEY}"
+        product_id: "${GUMROAD_PRODUCT_ID}"
+
+      - name: "Supabase"
+        type: "database"
+        url: "${SUPABASE_URL}"
+        key: "${SUPABASE_KEY}"
+        table: "authority_silos"
+
+      - name: "Notion"
+        type: "dashboard"
+        token: "${NOTION_TOKEN}"
+        database_id: "${NOTION_DATABASE_ID}"
+
+# ------------------------------------------------
+# Funnel Configuration
+# ------------------------------------------------
+funnel:
+  stages:
+    - name: "Lead Magnet"
+      order: 1
+      description: "Free content to capture leads"
+      schema_template: "lead_magnet_schema.json"
+
+    - name: "Core Offer"
+      order: 2
+      description: "Primary paid product"
+      schema_template: "core_offer_schema.json"
+
+    - name: "Authority Bundle"
+      order: 3
+      description: "Premium content package"
+      schema_template: "authority_bundle_schema.json"
+
+    - name: "Community"
+      order: 4
+      description: "Community access product"
+      schema_template: "community_schema.json"
+
+    - name: "Recurring Revenue"
+      order: 5
+      description: "Subscription-based product"
+      schema_template: "recurring_revenue_schema.json"
+
+# ------------------------------------------------
+# Schema Standards
+# ------------------------------------------------
+schema_standards:
+  format: "JSON Schema Draft 7"
+  required_fields:
+    - "title"
+    - "description"
+    - "content_type"
+    - "target_audience"
+    - "value_proposition"
+  validation_rules:
+    - "schema must be valid JSON"
+    - "all required fields must be present"
+    - "content_type must match funnel stage"
+    - "value_proposition must be non-empty"
+
+# ------------------------------------------------
+# Execution Settings
+# ------------------------------------------------
+execution:
+  parallel_processing: true
+  max_workers: 4
+  retry_attempts: 3
+  timeout: 300  # seconds
+
+# ------------------------------------------------
+# Environment Variables (placeholders)
+# ------------------------------------------------
+environment:
+  - "GUMROAD_API_KEY=${GUMROAD_API_KEY}"
+  - "GUMROAD_PRODUCT_ID=${GUMROAD_PRODUCT_ID}"
+  - "SUPABASE_URL=${SUPABASE_URL}"
+  - "SUPABASE_KEY=${SUPABASE_KEY}"
+  - "NOTION_TOKEN=${NOTION_TOKEN}"
+  - "NOTION_DATABASE_ID=${NOTION_DATABASE_ID}"
+
+# ------------------------------------------------
+# MCP Deployment Configuration
+# ------------------------------------------------
+mcp_deployment:
+  environment: "production"
+  service_name: "AuthoritySiloArchitectBuilder"
+  entrypoint: "main.py"
+  port: 8080
+  auto_restart: true
+  logging: "logs/authority_silo_architect.log"

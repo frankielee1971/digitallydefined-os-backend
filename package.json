@@ -1,19 +1,17 @@
 {
-  "name": "digitallydefined-os-backend",
+  "name": "digitallydefined-backend",
   "version": "1.0.0",
+  "description": "DigitallyDefined API Backend - Powers the website and dashboard with Hermes AI integration",
   "type": "module",
+  "main": "src/index.js",
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
   },
   "dependencies": {
-    "@notionhq/client": "^2.3.0",
-    "firebase-admin": "^13.5.0",
-    "googleapis": "^166.0.0",
-    "node-fetch": "^3.3.2"
-  },
-  "devDependencies": {
-    "@types/node": "^24.10.1",
-    "@vercel/node": "^5.5.11",
-    "typescript": "^5.9.3"
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "@supabase/supabase-js": "^2.45.0"
   }
 }

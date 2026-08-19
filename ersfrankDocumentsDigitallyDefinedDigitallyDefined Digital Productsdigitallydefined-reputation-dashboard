@@ -1,0 +1,165 @@
+warning: in the working copy of 'api/hermes.js', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/api/hermes.js b/api/hermes.js[m
+[1mindex b70cb22..f246470 100644[m
+[1m--- a/api/hermes.js[m
+[1m+++ b/api/hermes.js[m
+[36m@@ -159,48 +159,134 @@[m [mexport default async function handler(req, res) {[m
+     let model = null;[m
+     let lastError = null;[m
+ [m
+[31m-    // === Hermes Provider (Vercel AI Gateway Only) ===[m
+[32m+[m[32m    // === 1) Vercel AI Gateway ===[m
+     try {[m
+       const vercelKey = process.env.VERCEL_AI_API_KEY;[m
+       const vercelModel = (process.env.HERMES_MODEL || '').trim();[m
+ [m
+[31m-      if (!vercelKey || !vercelModel) {[m
+[31m-        throw new Error([m
+[31m-          `Hermes provider not configured. Missing env: VERCEL_AI_API_KEY=${Boolean(vercelKey)} HERMES_MODEL=${String(vercelModel)}`,[m
+[31m-        );[m
+[31m-      }[m
+[32m+[m[32m      if (vercelKey && vercelModel) {[m
+[32m+[m[32m        const resVercel = await fetch('https://api.vercel.ai/v1/chat/completions', {[m
+[32m+[m[32m          method: 'POST',[m
+[32m+[m[32m          headers: {[m
+[32m+[m[32m            Authorization: `Bearer ${vercelKey.trim()}`,[m
+[32m+[m[32m            'Content-Type': 'application/json',[m
+[32m+[m[32m          },[m
+[32m+[m[32m          body: JSON.stringify({[m
+[32m+[m[32m            model: vercelModel,[m
+[32m+[m[32m            messages,[m
+[32m+[m[32m          }),[m
+[32m+[m[32m        });[m
+ [m
+[31m-      const resVercel = await fetch('https://api.vercel.ai/v1/chat/completions', {[m
+[31m-        method: 'POST',[m
+[31m-        headers: {[m
+[31m-          Authorization: `Bearer ${vercelKey.trim()}`,[m
+[31m-          'Content-Type': 'application/json',[m
+[31m-        },[m
+[31m-        body: JSON.stringify({[m
+[31m-          model: vercelModel,[m
+[31m-          messages,[m
+[31m-        }),[m
+[31m-      });[m
+[32m+[m[32m        if (!resVercel.ok) {[m
+[32m+[m[32m          const text = await resVercel.text();[m
+[32m+[m[32m          throw new Error(`Vercel AI Gateway error: ${resVercel.status} ${resVercel.statusText}${text ? ` - ${text.slice(0, 200)}` : ''}`);[m
+[32m+[m[32m        }[m
+ [m
+[31m-      const data = await resVercel.json();[m
+[31m-      if (!resVercel.ok) {[m
+[31m-        throw new Error(data?.error?.message || `Vercel AI Gateway error: ${resVercel.status}`);[m
+[31m-      }[m
+[32m+[m[32m        const contentType = resVercel.headers.get('content-type') || '';[m
+[32m+[m[32m        if (!contentType.includes('application/json')) {[m
+[32m+[m[32m          const text = await resVercel.text();[m
+[32m+[m[32m          throw new Error(`Vercel AI Gateway returned non-JSON response: ${text.slice(0, 200)}`);[m
+[32m+[m[32m        }[m
+ [m
+[31m-      const raw = data?.choices?.[0]?.message?.content || '';[m
+[31m-      reply = stripMarkdown(raw);[m
+[31m-      provider = 'vercel';[m
+[31m-      model = vercelModel;[m
+[32m+[m[32m        const data = await resVercel.json();[m
+[32m+[m[32m        const raw = data?.choices?.[0]?.message?.content || '';[m
+[32m+[m[32m        reply = stripMarkdown(raw);[m
+[32m+[m[32m        provider = 'vercel';[m
+[32m+[m[32m        model = vercelModel;[m
+[32m+[m[32m      }[m
+     } catch (e) {[m
+       lastError = e.message || 'Vercel AI Gateway failed';[m
+     }[m
+ [m
+[32m+[m[32m    // === 2) OpenRouter (if no reply yet) ===[m
+[32m+[m[32m    if (!reply) {[m
+[32m+[m[32m      try {[m
+[32m+[m[32m        const orKey = process.env.OPENROUTER_API_KEY;[m
+[32m+[m[32m        const orModel = (process.env.OPENROUTER_MODEL || '').trim();[m
+[32m+[m
+[32m+[m[32m        if (orKey && orModel) {[m
+[32m+[m[32m          const resOR = await fetch('https://openrouter.ai/api/v1/chat/completions', {[m
+[32m+[m[32m            method: 'POST',[m
+[32m+[m[32m            headers: {[m
+[32m+[m[32m              Authorization: `Bearer ${orKey.trim()}`,[m
+[32m+[m[32m              'Content-Type': 'application/json',[m
+[32m+[m[32m            },[m
+[32m+[m[32m            body: JSON.stringify({[m
+[32m+[m[32m              model: orModel,[m
+[32m+[m[32m              messages,[m
+[32m+[m[32m            }),[m
+[32m+[m[32m          });[m
+[32m+[m
+[32m+[m[32m          if (!resOR.ok) {[m
+[32m+[m[32m            const text = await resOR.text();[m
+[32m+[m[32m            throw new Error(`OpenRouter error: ${resOR.status} ${resOR.statusText}${text ? ` - ${text.slice(0, 200)}` : ''}`);[m
+[32m+[m[32m          }[m
+[32m+[m
+[32m+[m[32m          const contentTypeRes = resOR.headers.get('content-type') || '';[m
+[32m+[m[32m          if (!contentTypeRes.includes('application/json')) {[m
+[32m+[m[32m            const text = await resOR.text();[m
+[32m+[m[32m            throw new Error(`OpenRouter returned non-JSON response: ${text.slice(0, 200)}`);[m
+[32m+[m[32m          }[m
+[32m+[m
+[32m+[m[32m          const data = await resOR.json();[m
+[32m+[m[32m          const raw = data?.choices?.[0]?.message?.content || '';[m
+[32m+[m[32m          reply = stripMarkdown(raw);[m
+[32m+[m[32m          provider = 'openrouter';[m
+[32m+[m[32m          model = orModel;[m
+[32m+[m[32m        }[m
+[32m+[m[32m      } catch (e) {[m
+[32m+[m[32m        lastError = e.message || lastError || 'OpenRouter failed';[m
+[32m+[m[32m      }[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    // === 3) Groq (fallback) ===[m
+[32m+[m[32m    if (!reply) {[m
+[32m+[m[32m      try {[m
+[32m+[m[32m        const groqKey = process.env.GROQ_API_KEY;[m
+[32m+[m[32m        const groqModel = (process.env.GROQ_MODEL || '').trim();[m
+[32m+[m
+[32m+[m[32m        if (groqKey && groqModel) {[m
+[32m+[m[32m          const resGroq = await fetch('https://api.groq.com/openai/v1/chat/completions', {[m
+[32m+[m[32m            method: 'POST',[m
+[32m+[m[32m            headers: {[m
+[32m+[m[32m              Authorization: `Bearer ${groqKey.trim()}`,[m
+[32m+[m[32m              'Content-Type': 'application/json',[m
+[32m+[m[32m            },[m
+[32m+[m[32m            body: JSON.stringify({[m
+[32m+[m[32m              model: groqModel,[m
+[32m+[m[32m              messages,[m
+[32m+[m[32m            }),[m
+[32m+[m[32m          });[m
+[32m+[m
+[32m+[m[32m          if (!resGroq.ok) {[m
+[32m+[m[32m            const text = await resGroq.text();[m
+[32m+[m[32m            throw new Error(`Groq error: ${resGroq.status} ${resGroq.statusText}${text ? ` - ${text.slice(0, 200)}` : ''}`);[m
+[32m+[m[32m          }[m
+[32m+[m
+[32m+[m[32m          const contentType = resGroq.headers.get('content-type') || '';[m
+[32m+[m[32m          if (!contentType.includes('application/json')) {[m
+[32m+[m[32m            const text = await resGroq.text();[m
+[32m+[m[32m            throw new Error(`Groq returned non-JSON response: ${text.slice(0, 200)}`);[m
+[32m+[m[32m          }[m
+[32m+[m
+[32m+[m[32m          const data = await resGroq.json();[m
+[32m+[m[32m          const raw = data?.choices?.[0]?.message?.content || '';[m
+[32m+[m[32m          reply = stripMarkdown(raw);[m
+[32m+[m[32m          provider = 'groq';[m
+[32m+[m[32m          model = groqModel;[m
+[32m+[m[32m        }[m
+[32m+[m[32m      } catch (e) {[m
+[32m+[m[32m        lastError = e.message || lastError || 'Groq failed';[m
+[32m+[m[32m      }[m
+[32m+[m[32m    }[m
+[32m+[m
+     if (!reply) {[m
+       reply = lastError[m
+         ? `Hermes provider failed: ${lastError}`[m
+         : 'Hermes could not reach any AI provider. Check backend env keys for Vercel, OpenRouter, or Groq.';[m
+     }[m
+ [m
+[32m+[m
+     return res.status(200).json({[m
+       reply,[m
+       provider,[m

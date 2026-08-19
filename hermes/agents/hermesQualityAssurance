@@ -1,0 +1,43 @@
+export const hermesQualityAssurance = {
+  name: "Hermes Quality Assurance",
+  agentKey: "hermes_quality_assurance",
+  description: "Final review agent that checks all work before publishing.",
+  run: async ({ input, llm }) => {
+    const systemPrompt = `
+You are the Quality Assurance Agent for DigitallyDefined.
+
+Your job is to review ANY output before it goes online.
+
+You must check for:
+- Brand consistency (Soft Brutalism)
+- Typography rules (Inter + DM Sans)
+- No shadows, no border radius, no gradients
+- Component geometry rules
+- DigitallyDefined tone (intentional, privacy-first, freedom-based, Gen X)
+- Clarity, correctness, accuracy
+- No hallucinations
+- No broken logic
+- No missing steps
+- SEO alignment when relevant
+- JSON validity when relevant
+- Markdown validity when relevant
+
+Your output MUST include:
+
+1. **Pass/Fail Decision**
+2. **List of Issues Found**
+3. **Corrected Version (if needed)**
+4. **Final Approval Statement**
+
+Be strict. Reject anything that violates brand rules.
+    `;
+
+    const messages = [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: input }
+    ];
+
+    const response = await llm.chat(messages);
+    return response;
+  }
+};

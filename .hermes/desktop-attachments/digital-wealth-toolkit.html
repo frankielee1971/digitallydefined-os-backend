@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Digital Wealth Toolkit</title>
+  <link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700,900&display=swap" rel="stylesheet">
+  <style>
+    :root, [data-theme="light"] {
+      --text-xs: clamp(0.75rem, 0.7rem + 0.25vw, 0.875rem);
+      --text-sm: clamp(0.875rem, 0.8rem + 0.35vw, 1rem);
+      --text-base: clamp(1rem, 0.95rem + 0.25vw, 1.125rem);
+      --text-lg: clamp(1.125rem, 1rem + 0.75vw, 1.5rem);
+      --text-xl: clamp(1.5rem, 1.2rem + 1.25vw, 2.25rem);
+      --space-1: .25rem; --space-2: .5rem; --space-3: .75rem; --space-4: 1rem; --space-5: 1.25rem; --space-6: 1.5rem; --space-8: 2rem; --space-10: 2.5rem; --space-12: 3rem; --space-16: 4rem;
+      --color-bg:#f7f6f2; --color-surface:#fbfbf9; --color-surface-2:#f3f0ec; --color-border:#d4d1ca; --color-text:#28251d; --color-text-muted:#6f6b63; --color-primary:#01696f; --color-primary-hover:#0c4e54; --color-success:#437a22; --color-warning:#964219; --color-blue:#006494; --color-purple:#7a39bb; --shadow-sm:0 1px 2px rgba(0,0,0,.05); --shadow-md:0 8px 24px rgba(0,0,0,.08); --radius-sm:.5rem; --radius-md:.75rem; --radius-lg:1rem; --radius-xl:1.25rem; --font-body:'Satoshi',system-ui,sans-serif;
+    }
+    [data-theme="dark"] {
+      --color-bg:#171614; --color-surface:#1c1b19; --color-surface-2:#22211f; --color-border:#393836; --color-text:#e7e3db; --color-text-muted:#a49f95; --color-primary:#4f98a3; --color-primary-hover:#67aab4; --color-success:#6daa45; --color-warning:#bb653b; --color-blue:#5591c7; --color-purple:#a86fdf; --shadow-sm:0 1px 2px rgba(0,0,0,.2); --shadow-md:0 8px 24px rgba(0,0,0,.35);
+    }
+    *{box-sizing:border-box} html,body{height:100%;margin:0} body{font-family:var(--font-body);font-size:var(--text-base);background:var(--color-bg);color:var(--color-text)}
+    button,input,select,textarea{font:inherit} button{cursor:pointer} a{color:inherit}
+    .app{display:grid;grid-template-columns:280px 1fr;height:100dvh;overflow:hidden}
+    .sidebar{background:var(--color-surface);border-right:1px solid var(--color-border);padding:var(--space-6);overflow:auto}
+    .brand{display:flex;gap:var(--space-3);align-items:center;margin-bottom:var(--space-8)}
+    .logo{width:38px;height:38px;border-radius:12px;background:linear-gradient(135deg,var(--color-primary),var(--color-blue));box-shadow:var(--shadow-sm);position:relative}
+    .logo:before,.logo:after{content:"";position:absolute;background:#fff;border-radius:999px}.logo:before{width:18px;height:4px;left:10px;top:12px;transform:rotate(-35deg)}.logo:after{width:14px;height:4px;left:14px;top:21px;transform:rotate(35deg)}
+    .brand h1{font-size:var(--text-lg);line-height:1.1;margin:0}.brand p{margin:.2rem 0 0;color:var(--color-text-muted);font-size:var(--text-xs)}
+    .nav{display:grid;gap:var(--space-2)} .nav button{padding:.8rem 1rem;border-radius:.8rem;border:1px solid transparent;background:transparent;text-align:left;color:var(--color-text-muted)} .nav button.active,.nav button:hover{background:var(--color-surface-2);border-color:var(--color-border);color:var(--color-text)}
+    .sidecard{margin-top:var(--space-8);padding:var(--space-4);background:var(--color-surface-2);border:1px solid var(--color-border);border-radius:var(--radius-lg)}
+    .main{overflow:auto;padding:var(--space-6)} .topbar{display:flex;justify-content:space-between;gap:var(--space-4);align-items:center;margin-bottom:var(--space-6)}
+    .title h2{font-size:var(--text-xl);margin:0}.title p{margin:.35rem 0 0;color:var(--color-text-muted);max-width:70ch}
+    .toggle{border:1px solid var(--color-border);background:var(--color-surface);padding:.7rem .9rem;border-radius:999px}
+    .hero{display:grid;grid-template-columns:1.3fr .9fr;gap:var(--space-6);margin-bottom:var(--space-6)}
+    .panel{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-xl);box-shadow:var(--shadow-sm);padding:var(--space-6)}
+    .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--space-4);margin-bottom:var(--space-6)}
+    .kpi{padding:var(--space-4);background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg)}
+    .kpi .label{font-size:var(--text-xs);color:var(--color-text-muted);text-transform:uppercase;letter-spacing:.08em}.kpi .value{font-size:1.8rem;font-weight:800;margin-top:.4rem}
+    .grid2{display:grid;grid-template-columns:1.1fr .9fr;gap:var(--space-6)}
+    .tool-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:var(--space-4);margin-top:var(--space-4)}
+    .tool-card{padding:var(--space-4);border:1px solid var(--color-border);border-radius:var(--radius-lg);background:var(--color-surface-2)} .tool-card h4{margin:0 0 .4rem;font-size:1rem} .tool-card p{margin:0;color:var(--color-text-muted);font-size:var(--text-sm)}
+    .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-4)} .form-grid-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--space-4)}
+    label{display:grid;gap:.4rem;font-size:var(--text-sm);font-weight:600} input,select,textarea{padding:.8rem .9rem;border-radius:.8rem;border:1px solid var(--color-border);background:var(--color-bg);color:var(--color-text)} textarea{min-height:110px;resize:vertical}
+    .btnrow{display:flex;flex-wrap:wrap;gap:var(--space-3);margin-top:var(--space-4)} .btn{padding:.85rem 1rem;border-radius:999px;border:1px solid var(--color-border);background:var(--color-surface)} .btn.primary{background:var(--color-primary);border-color:var(--color-primary);color:white}
+    .result{margin-top:var(--space-5);padding:var(--space-4);border-radius:var(--radius-lg);background:var(--color-surface-2);border:1px solid var(--color-border)}
+    .section-title{display:flex;justify-content:space-between;gap:var(--space-3);align-items:end;margin-bottom:var(--space-4)} .section-title h3{margin:0;font-size:var(--text-lg)} .section-title p{margin:0;color:var(--color-text-muted);font-size:var(--text-sm)}
+    .hidden{display:none}
+    .score-pill{display:inline-block;padding:.35rem .7rem;border-radius:999px;background:rgba(1,105,111,.12);color:var(--color-primary);font-size:var(--text-xs);font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+    ul.clean{padding-left:1.1rem} ul.clean li{margin:.35rem 0}
+    @media (max-width: 980px){.app{grid-template-columns:1fr}.sidebar{display:none}.hero,.grid2,.form-grid,.form-grid-3,.kpis{grid-template-columns:1fr}.main{padding:var(--space-4)}}
+  </style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo" aria-hidden="true"></div>
+      <div>
+        <h1>Digital Wealth Toolkit</h1>
+        <p>Faceless tools for retirement peace of mind</p>
+      </div>
+    </div>
+    <nav class="nav" id="nav"></nav>
+    <div class="sidecard">
+      <strong>Built for DigitallyDefined</strong>
+      <p style="color:var(--color-text-muted);font-size:var(--text-sm);margin:.6rem 0 0">A prototype bundle covering retirement clarity, catch-up strategy, debt decisions, side-income planning, and digital asset matching.</p>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="topbar">
+      <div class="title">
+        <h2 id="pageTitle">Overview</h2>
+        <p id="pageDesc">A starter dashboard that bundles the tool concepts into one faceless digital product you can expand into standalone offers, PDFs, email courses, Notion templates, and blog content.</p>
+      </div>
+      <button class="toggle" id="themeToggle" aria-label="Toggle theme">◐</button>
+    </div>
+
+    <section id="overview" class="page">
+      <div class="hero">
+        <div class="panel">
+          <span class="score-pill">Digital real estate</span>
+          <h3 style="font-size:1.8rem;margin:.8rem 0 .6rem">Turn fear about retirement into a portfolio of online assets.</h3>
+          <p style="color:var(--color-text-muted)">Each tool below can become a faceless lead magnet, a premium calculator, a Notion dashboard, a printable planner, a mini-course, or a membership gateway. Start simple, validate, then split the strongest ones into standalone products.</p>
+          <div class="tool-list">
+            <div class="tool-card"><h4>Retirement gap explainer</h4><p>Quiz + report + email mini-course</p></div>
+            <div class="tool-card"><h4>Super catch-up optimizer</h4><p>Calculator + Notion/Sheet planner</p></div>
+            <div class="tool-card"><h4>Debt vs. investing helper</h4><p>Decision aid + educational blog series</p></div>
+            <div class="tool-card"><h4>Runway & freedom number</h4><p>Freedom dashboard + printable planner</p></div>
+            <div class="tool-card"><h4>Skill-to-asset matchmaker</h4><p>Niche matcher + 90-day roadmap</p></div>
+            <div class="tool-card"><h4>Side-hustle selector</h4><p>Safe options for 45–60</p></div>
+            <div class="tool-card"><h4>Macro news translator</h4><p>Weekly faceless newsletter workflow</p></div>
+            <div class="tool-card"><h4>Confidence score</h4><p>Quiz + next best step</p></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="section-title"><h3>Product stack ideas</h3><p>Monetize in layers</p></div>
+          <ul class="clean">
+            <li>$0–$9 lead magnets: quiz results, checklists, PDF snapshots</li>
+            <li>$17–$37 templates: Notion planners, calculators, swipe prompts</li>
+            <li>$47–$97 toolkits: interactive calculators + guided videos or text lessons</li>
+            <li>$127+ memberships: monthly reviews, prompts, accountability, newsletter upgrades</li>
+          </ul>
+          <div class="result">
+            <strong>Recommended build order</strong>
+            <ol class="clean">
+              <li>Retirement gap explainer</li>
+              <li>Freedom number calculator</li>
+              <li>Skill-to-asset matchmaker</li>
+              <li>Super catch-up optimizer</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+      <div class="kpis">
+        <div class="kpi"><div class="label">Tools</div><div class="value">8</div></div>
+        <div class="kpi"><div class="label">Formats</div><div class="value">5</div></div>
+        <div class="kpi"><div class="label">Audience Fit</div><div class="value">Gen X</div></div>
+        <div class="kpi"><div class="label">Faceless</div><div class="value">100%</div></div>
+      </div>
+    </section>
+
+    <section id="retirement" class="page hidden">
+      <div class="panel">
+        <div class="section-title"><h3>Retirement gap explainer</h3><p>Quiz + snapshot report</p></div>
+        <div class="form-grid-3">
+          <label>Current age<input id="rg_age" type="number" value="52"></label>
+          <label>Retirement age goal<input id="rg_retire" type="number" value="67"></label>
+          <label>Years in retirement<input id="rg_years" type="number" value="25"></label>
+          <label>Current retirement savings<input id="rg_current" type="number" value="120000"></label>
+          <label>Monthly contribution<input id="rg_monthly" type="number" value="600"></label>
+          <label>Expected annual return %<input id="rg_return" type="number" step="0.1" value="6"></label>
+          <label>Desired annual retirement income<input id="rg_income" type="number" value="55000"></label>
+          <label>Expected Social Security / other yearly income<input id="rg_other" type="number" value="24000"></label>
+          <label>Safe withdrawal rate %<input id="rg_swr" type="number" step="0.1" value="4"></label>
+        </div>
+        <div class="btnrow"><button class="btn primary" onclick="calcRetirementGap()">Calculate gap</button></div>
+        <div id="rg_result" class="result hidden"></div>
+      </div>
+    </section>
+
+    <section id="catchup" class="page hidden">
+      <div class="panel">
+        <div class="section-title"><h3>Super catch-up optimizer</h3><p>Estimate extra annual impact</p></div>
+        <div class="form-grid">
+          <label>Current age<input id="cu_age" type="number" value="56"></label>
+          <label>Retirement age<input id="cu_retire" type="number" value="65"></label>
+          <label>Current annual contribution<input id="cu_current" type="number" value="12000"></label>
+          <label>Target annual contribution<input id="cu_target" type="number" value="23500"></label>
+          <label>Current retirement balance<input id="cu_balance" type="number" value="95000"></label>
+          <label>Expected annual return %<input id="cu_return" type="number" step="0.1" value="6"></label>
+        </div>
+        <div class="btnrow"><button class="btn primary" onclick="calcCatchup()">Optimize</button></div>
+        <div id="cu_result" class="result hidden"></div>
+      </div>
+    </section>
+
+    <section id="debt" class="page hidden">
+      <div class="panel">
+        <div class="section-title"><h3>Debt vs. investing helper</h3><p>Decision support, not advice</p></div>
+        <div class="form-grid-3">
+          <label>Debt balance<input id="dv_balance" type="number" value="12000"></label>
+          <label>Debt interest rate %<input id="dv_rate" type="number" step="0.1" value="22"></label>
+          <label>Minimum monthly payment<input id="dv_payment" type="number" value="350"></label>
+          <label>Employer match available? <select id="dv_match"><option value="yes">Yes</option><option value="no">No</option></select></label>
+          <label>Expected annual investing return %<input id="dv_return" type="number" step="0.1" value="7"></label>
+          <label>Extra money per month<input id="dv_extra" type="number" value="400"></label>
+        </div>
+        <div class="btnrow"><button class="btn primary" onclick="calcDebtVsInvest()">Compare options</button></div>
+        <div id="dv_result" class="result hidden"></div>
+      </div>
+    </section>
+
+    <section id="runway" class="page hidden">
+      <div class="panel">
+        <div class="section-title"><h3>Runway & freedom number calculator</h3><p>Digital income planning</p></div>
+        <div class="form-grid">
+          <label>Essential monthly expenses<input id="fr_expenses" type="number" value="3200"></label>
+          <label>Current cash savings<input id="fr_savings" type="number" value="8000"></label>
+          <label>Desired retirement contribution boost / month<input id="fr_boost" type="number" value="500"></label>
+          <label>Desired business tool budget / month<input id="fr_tools" type="number" value="150"></label>
+          <label>Current digital income / month<input id="fr_income" type="number" value="200"></label>
+          <label>Target safety buffer months<input id="fr_targetmonths" type="number" value="6"></label>
+        </div>
+        <div class="btnrow"><button class="btn primary" onclick="calcFreedom()">Calculate freedom number</button></div>
+        <div id="fr_result" class="result hidden"></div>
+      </div>
+    </section>
+
+    <section id="matchmaker" class="page hidden">
+      <div class="panel">
+        <div class="section-title"><h3>Skill-to-asset matchmaker</h3><p>Find faceless digital real estate</p></div>
+        <div class="form-grid">
+          <label>Top skill<select id="sm_skill"><option>Writing</option><option>Research</option><option>Teaching</option><option>Design</option><option>Organization</option><option>Analytics</option></select></label>
+          <label>Comfort zone<select id="sm_zone"><option>Writing</option><option>Systems</option><option>Numbers</option><option>Design</option><option>Community</option></select></label>
+          <label>Energy capacity<select id="sm_energy"><option>Low</option><option>Medium</option><option>High</option></select></label>
+          <label>Urgency for income<select id="sm_urgency"><option>High</option><option>Medium</option><option>Low</option></select></label>
+          <label>No-go zones<select id="sm_nogo"><option>Video</option><option>Live calls</option><option>Heavy tech</option><option>Sales calls</option></select></label>
+          <label>Passion / niche<input id="sm_passion" type="text" value="retirement confidence for Gen X women"></label>
+        </div>
+        <div class="btnrow"><button class="btn primary" onclick="matchAsset()">Generate match</button></div>
+        <div id="sm_result" class="result hidden"></div>
+      </div>
+    </section>
+
+    <section id="selector" class="page hidden">
+      <div class="panel">
+        <div class="section-title"><h3>Side-hustle selector</h3><p>Safer faceless models for 45–60</p></div>
+        <div class="form-grid">
+          <label>Available hours / week<input id="sh_hours" type="number" value="8"></label>
+          <label>Budget to start<input id="sh_budget" type="number" value="50"></label>
+          <label>Need money quickly?<select id="sh_speed"><option>Yes</option><option>No</option></select></label>
+          <label>Preferred style<select id="sh_style"><option>Asynchronous</option><option>Product-based</option><option>Writing-based</option><option>Template-based</option></select></label>
+        </div>
+        <div class="btnrow"><button class="btn primary" onclick="selectSideHustle()">Show options</button></div>
+        <div id="sh_result" class="result hidden"></div>
+      </div>
+    </section>
+
+    <section id="macro" class="page hidden">
+      <div class="panel">
+        <div class="section-title"><h3>Macro news translator</h3><p>Newsletter angle generator</p></div>
+        <div class="form-grid">
+          <label>Topic<select id="mn_topic"><option>Inflation</option><option>Fed rates</option><option>Recession fears</option><option>Stock market volatility</option><option>Retirement catch-up contributions</option></select></label>
+          <label>Tone<select id="mn_tone"><option>Warm and calming</option><option>Straight and practical</option><option>Hopeful and empowering</option></select></label>
+        </div>
+        <label style="margin-top:var(--space-4)">Source notes / headlines<textarea id="mn_notes">Paste a Perplexity Finance summary here, then use this tool to translate it into a plain-language newsletter angle for Gen X women.</textarea></label>
+        <div class="btnrow"><button class="btn primary" onclick="translateMacro()">Generate angle</button></div>
+        <div id="mn_result" class="result hidden"></div>
+      </div>
+    </section>
+
+    <section id="confidence" class="page hidden">
+      <div class="panel">
+        <div class="section-title"><h3>Confidence score & next step</h3><p>Quiz + affirmation + CTA</p></div>
+        <div class="form-grid-3">
+          <label>I understand my retirement gap<select class="cs_q"><option value="1">Not yet</option><option value="2">Somewhat</option><option value="3">Mostly</option></select></label>
+          <label>I know what digital asset to build first<select class="cs_q"><option value="1">Not yet</option><option value="2">Somewhat</option><option value="3">Yes</option></select></label>
+          <label>I believe I can earn online without showing my face<select class="cs_q"><option value="1">Not yet</option><option value="2">Maybe</option><option value="3">Yes</option></select></label>
+          <label>I have a simple weekly plan<select class="cs_q"><option value="1">No</option><option value="2">A rough one</option><option value="3">Yes</option></select></label>
+          <label>I feel calmer about retirement<select class="cs_q"><option value="1">No</option><option value="2">A little</option><option value="3">Yes</option></select></label>
+          <label>I am ready for one next step<select class="cs_q"><option value="1">Need support</option><option value="2">Close</option><option value="3">Ready</option></select></label>
+        </div>
+        <div class="btnrow"><button class="btn primary" onclick="calcConfidence()">Score me</button></div>
+        <div id="cs_result" class="result hidden"></div>
+      </div>
+    </section>
+  </main>
+</div>
+<script>
+const sections = [
+  ['overview','Overview','Bundle strategy and product stack'],
+  ['retirement','Retirement gap explainer','Interactive quiz + report logic'],
+  ['catchup','Super catch-up optimizer','Contribution comparison calculator'],
+  ['debt','Debt vs. investing helper','Decision support and payoff logic'],
+  ['runway','Runway & freedom number','Income target and cash runway planner'],
+  ['matchmaker','Skill-to-asset matchmaker','Match strengths to faceless digital assets'],
+  ['selector','Side-hustle selector','Safer digital income options'],
+  ['macro','Macro news translator','Newsletter angle generator'],
+  ['confidence','Confidence score','Quiz with next step guidance']
+];
+const nav = document.getElementById('nav');
+sections.forEach(([id,title,desc],i)=>{ const b=document.createElement('button'); b.textContent=title; b.className=i===0?'active':''; b.onclick=()=>showPage(id,title,desc,b); nav.appendChild(b); });
+function showPage(id,title,desc,btn){ document.querySelectorAll('.page').forEach(p=>p.classList.add('hidden')); document.getElementById(id).classList.remove('hidden'); document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); document.getElementById('pageTitle').textContent=title; document.getElementById('pageDesc').textContent=desc; }
+document.getElementById('themeToggle').onclick=()=>{ const html=document.documentElement; html.setAttribute('data-theme', html.getAttribute('data-theme')==='dark'?'light':'dark'); };
+const fmt = n => new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(n);
+function yearsBetween(a,b){return Math.max(0,b-a)}
+function fvLump(principal, r, n){return principal*Math.pow(1+r,n)}
+function fvSeries(monthly, annualRate, years){ const m=annualRate/12, periods=years*12; if(m===0) return monthly*periods; return monthly*((Math.pow(1+m,periods)-1)/m); }
+function calcRetirementGap(){
+  const age=+rg_age.value, retire=+rg_retire.value, years=yearsBetween(age,retire), current=+rg_current.value, monthly=+rg_monthly.value, rate=(+rg_return.value)/100, income=+rg_income.value, other=+rg_other.value, swr=(+rg_swr.value)/100;
+  const needFromPortfolio=Math.max(0,income-other); const targetNestEgg = swr>0 ? needFromPortfolio/swr : 0; const future = fvLump(current,rate,years)+fvSeries(monthly,rate,years); const gap = targetNestEgg-future;
+  const monthlyNeeded = gap>0 ? (gap/(((Math.pow(1+rate/12,years*12)-1)/(rate/12))||1)) : 0;
+  rg_result.classList.remove('hidden'); rg_result.innerHTML = `<strong>Snapshot</strong><p>You may need about <b>${fmt(targetNestEgg)}</b> invested to produce roughly <b>${fmt(needFromPortfolio)}</b> per year from your portfolio. At your current pace, you could reach around <b>${fmt(future)}</b> by age ${retire}.</p><p>${gap>0?`That leaves an estimated gap of <b>${fmt(gap)}</b>. To close it entirely at the same return, you would need roughly <b>${fmt(monthlyNeeded)}</b> more per month.`:`You appear on track for this simplified target based on the assumptions entered.`}</p><p><b>Email mini-course angle:</b> Day 1 = know your number, Day 2 = close the gap, Day 3 = build digital income that supports catch-up contributions.</p>`;
+}
+function calcCatchup(){ const age=+cu_age.value, retire=+cu_retire.value, years=yearsBetween(age,retire), currentAnnual=+cu_current.value, targetAnnual=+cu_target.value, balance=+cu_balance.value, rate=(+cu_return.value)/100; const currentPath=fvLump(balance,rate,years)+fvSeries(currentAnnual/12,rate,years); const targetPath=fvLump(balance,rate,years)+fvSeries(targetAnnual/12,rate,years); const difference=targetPath-currentPath; cu_result.classList.remove('hidden'); cu_result.innerHTML=`<strong>Catch-up impact</strong><p>Increasing annual contributions from <b>${fmt(currentAnnual)}</b> to <b>${fmt(targetAnnual)}</b> could add about <b>${fmt(difference)}</b> by age ${retire}, based on the return assumption you entered.</p><p>That increase equals about <b>${fmt((targetAnnual-currentAnnual)/12)}</b> more per month. This makes a great web calculator plus Notion planner where users can compare 2–3 contribution paths.</p>`; }
+function calcDebtVsInvest(){ const balance=+dv_balance.value, rate=+dv_rate.value/100/12, payment=+dv_payment.value, match=dv_match.value, annualReturn=+dv_return.value/100/12, extra=+dv_extra.value; let months=Math.ceil(Math.log(payment/(payment-balance*rate))/Math.log(1+rate)); if(!isFinite(months)||months<0) months=0; const interestPaid = Math.max(0, months*payment-balance); const invest12 = extra * (((Math.pow(1+annualReturn,12)-1)/annualReturn)||12); let verdict=''; if(match==='yes'){ verdict='Capture the employer match first, then focus extra cash on high-interest debt.'; } else if((+dv_rate.value)>=10){ verdict='High-interest debt likely deserves priority before extra investing.'; } else { verdict='A split strategy may make sense: invest some, pay down debt steadily.'; } dv_result.classList.remove('hidden'); dv_result.innerHTML=`<strong>Decision snapshot</strong><p>At the current payment, this debt could take about <b>${months}</b> months to clear and cost roughly <b>${fmt(interestPaid)}</b> in interest.</p><p>If the same <b>${fmt(extra)}</b> were invested for 12 months instead, it could grow to about <b>${fmt(invest12)}</b> in a simple projection.</p><p><b>Framework:</b> ${verdict}</p><p><b>Content idea:</b> turn this into a blog series around “what I’d do first if I were starting over at 50.”</p>`; }
+function calcFreedom(){ const expenses=+fr_expenses.value, savings=+fr_savings.value, boost=+fr_boost.value, tools=+fr_tools.value, income=+fr_income.value, targetMonths=+fr_targetmonths.value; const runway=savings/Math.max(1,expenses-income); const freedom=expenses+boost+tools; const gap=Math.max(0,freedom-income); const bufferTarget=expenses*targetMonths; fr_result.classList.remove('hidden'); fr_result.innerHTML=`<strong>Freedom snapshot</strong><p>Your current cash runway is about <b>${runway.toFixed(1)} months</b> based on the numbers entered.</p><p>Your estimated <b>digital freedom number</b> is <b>${fmt(freedom)}</b> per month. Since you already make <b>${fmt(income)}</b>, the remaining monthly gap is about <b>${fmt(gap)}</b>.</p><p>To hold a ${targetMonths}-month safety buffer, you’d want around <b>${fmt(bufferTarget)}</b> in savings. This can become a printable planner + dashboard with categories like essentials, catch-up boost, and tool stack.</p>`; }
+function matchAsset(){ const skill=sm_skill.value, zone=sm_zone.value, energy=sm_energy.value, urgency=sm_urgency.value, nogo=sm_nogo.value, passion=sm_passion.value.toLowerCase(); const map={ Writing:['Newsletter','Blog bundle','Email mini-course'], Research:['Curated reports','Niche research packs','Comparison guides'], Teaching:['Mini-course','Checklist bundle','Explainer series'], Design:['Canva templates','Digital planners','Visual swipe files'], Organization:['Notion dashboard','Toolkit OS','Printable planner'], Analytics:['Calculator','Spreadsheet toolkit','Scorecard quiz']}; let picks=map[skill]||['Newsletter','Template','Guide']; if(energy==='Low') picks=[picks[0], 'Template bundle', 'Curated resource hub']; if(urgency==='High') picks=[picks[0], 'Low-ticket template', 'Done-with-you audit']; const role = zone==='Numbers' ? 'Authority Asset + Cash Now' : zone==='Writing' ? 'Growth Engine + Authority Asset' : 'Cash Now + Experiment'; sm_result.classList.remove('hidden'); sm_result.innerHTML=`<strong>Your best-fit digital assets</strong><p><b>Top 3 ideas:</b> ${picks.join(', ')}.</p><p><b>Why they fit:</b> Your strength in <b>${skill}</b>, comfort with <b>${zone}</b>, and ${energy.toLowerCase()} energy capacity suggest assets that can be built without relying on ${nogo.toLowerCase()}.</p><p><b>Portfolio role:</b> ${role}.</p><p><b>90-day angle:</b> Build around the niche “${passion},” launch one starter asset in 30 days, one growth asset in 60 days, and one monetized expansion in 90 days.</p>`; }
+function selectSideHustle(){ const hours=+sh_hours.value, budget=+sh_budget.value, speed=sh_speed.value, style=sh_style.value; let rows=[]; if(style==='Template-based') rows=['Notion template shop','Printable planners','Canva toolkit']; else if(style==='Writing-based') rows=['Newsletter','Affiliate blog','Faceless ghostwritten content packs']; else if(style==='Product-based') rows=['Micro digital toolkit','Spreadsheet bundle','Niche PDF guide']; else rows=['Research concierge','Email strategy service','Digital asset setup service']; const safe = speed==='Yes' ? rows[0] : rows[1]; sh_result.classList.remove('hidden'); sh_result.innerHTML=`<strong>Safer shortlist</strong><p>With about <b>${hours} hours/week</b> and a <b>${fmt(budget)}</b> starting budget, your strongest low-friction options are: <b>${rows.join(', ')}</b>.</p><p><b>Best first move:</b> ${safe}.</p><p><b>Checklist bundle idea:</b> audience pain, format, build time, price, platform, faceless-friendly score, and first-offer CTA.</p>`; }
+function translateMacro(){ const topic=mn_topic.value, tone=mn_tone.value, notes=mn_notes.value.trim(); const intros={ 'Inflation':'Prices still feel sticky, and that matters because everyday costs quietly shape how much room you have for saving and side-income building.', 'Fed rates':'Rate moves can sound technical, but the real question is how they affect borrowing, savings, and the emotional temperature around money.', 'Recession fears':'When recession headlines rise, many women freeze. A calmer interpretation helps them separate noise from actual next steps.', 'Stock market volatility':'Market swings feel personal when retirement feels close, but volatility is not the same thing as failure.', 'Retirement catch-up contributions':'Catch-up contribution news matters most when it is translated into plain language and monthly action steps.'}; mn_result.classList.remove('hidden'); mn_result.innerHTML=`<strong>Newsletter angle</strong><p><b>Hook:</b> ${intros[topic]}</p><p><b>Tone:</b> ${tone}.</p><p><b>Faceless newsletter draft angle:</b> “What ${topic.toLowerCase()} means for Gen X women building retirement confidence and digital income.”</p><p><b>Use these notes:</b> ${notes.replace(/</g,'&lt;').slice(0,350)}${notes.length>350?'...':''}</p><p><b>CTA:</b> Invite readers to use your retirement gap or freedom number tool this week.</p>`; }
+function calcConfidence(){ const vals=[...document.querySelectorAll('.cs_q')].map(el=>+el.value); const total=vals.reduce((a,b)=>a+b,0); const max=vals.length*3; const pct=Math.round((total/max)*100); let band=''; let next=''; let affirmation=''; if(pct<45){ band='Foundation'; next='Start with the Retirement Gap Explainer and one 30-minute planning session.'; affirmation='You do not need to have everything figured out to start building real digital wealth.'; } else if(pct<75){ band='Momentum'; next='Choose one asset and build the smallest possible paid version this month.'; affirmation='You already have enough lived experience to turn insight into income.'; } else { band='Expansion'; next='Package your strongest tool into a paid bundle or membership entry point.'; affirmation='You are no longer starting from scratch. You are building from evidence.'; } cs_result.classList.remove('hidden'); cs_result.innerHTML=`<strong>Confidence score: ${pct}%</strong><p><b>Stage:</b> ${band}.</p><p><b>Next best step:</b> ${next}</p><p><b>Affirmation:</b> ${affirmation}</p><p><b>Email drip idea:</b> send score explanation, then a 3-day nurture sequence tied to the user’s stage.</p>`; }
+</script>
+</body>
+</html>

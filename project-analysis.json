@@ -1,0 +1,391 @@
+{
+  "frontend": {
+    "project_name": "digitallydefined-reputation-dashboard",
+    "location": "C:\\Users\\frank\\Documents\\Francescas_Brain\\DigitallyDefined\\DigitallyDefined Frontend-Backend\\digitallydefined-reputation-dashboard",
+    "frameworks": {
+      "core": ["React 18.3.1", "Vite 5.3.1"],
+      "styling": ["Tailwind CSS 3.4.4", "PostCSS 8.4.38", "Autoprefixer 10.4.19"],
+      "routing": ["React Router DOM 7.14.0"],
+      "icons": ["Lucide React 0.378.0"]
+    },
+    "build_tools": {
+      "bundler": "Vite",
+      "config_files": ["vite.config.js", "tailwind.config.js", "postcss.config.js"]
+    },
+    "key_dependencies": {
+      "backend_integrations": [
+        "@notionhq/client 5.18.0",
+        "@supabase/supabase-js 2.110.0",
+        "firebase 12.13.0",
+        "firebase-admin 13.8.0",
+        "googleapis 171.4.0"
+      ],
+      "vercel_services": [
+        "@vercel/analytics 2.0.1",
+        "@vercel/node 5.7.3",
+        "@vercel/speed-insights 2.0.0",
+        "@vercel/toolbar 0.2.6"
+      ]
+    },
+    "deployment": {
+      "platform": "Vercel",
+      "config": "vercel.json",
+      "rewrites": [
+        { "source": "/api/(.*)", "destination": "/api/$1.js" },
+        { "source": "/(.*)", "destination": "/index.html" }
+      ],
+      "csp": "script-src 'self' https://www.googletagmanager.com https://dijjlppdljpcgyoakdnq.supabase.co 'unsafe-inline' 'unsafe-eval'"
+    },
+    "folder_structure": {
+      "src": "Source code (TypeScript/JavaScript)",
+      "components": "React components",
+      "api": "Frontend API routes",
+      "auth": "Authentication logic",
+      "lib": "Shared utilities",
+      "public": "Static assets",
+      "scripts": "Build/export scripts",
+      "hermes": "Hermes AI integration",
+      "dist": "Build output"
+    }
+  },
+  "backend": {
+    "project_name": "digitallydefined-os-backend",
+    "location": "C:\\Users\\frank\\Documents\\Francescas_Brain\\DigitallyDefined-Workspace\\digitallydefined-os-backend",
+    "runtime": "Node.js (ES Modules)",
+    "frameworks": {
+      "language": "TypeScript 5.9.3",
+      "serverless": "Vercel Functions (@vercel/node 5.5.11)",
+      "target": "ES2020"
+    },
+    "build_tools": {
+      "typescript": "tsc --noEmit",
+      "config": "tsconfig.json"
+    },
+    "key_dependencies": {
+      "notion": "@notionhq/client 2.3.0",
+      "firebase": "firebase-admin 13.5.0",
+      "google": "googleapis 166.0.0",
+      "utilities": ["chalk 5.6.2", "node-fetch 3.3.2"]
+    },
+    "deployment": {
+      "platform": "Vercel",
+      "config": "vercel.json",
+      "cors": {
+        "allowed_origins": [
+          "https://dashboard.digitallydefined.online",
+          "http://localhost:3000",
+          "http://localhost:5173"
+        ],
+        "methods": "GET, POST, OPTIONS",
+        "headers": "Content-Type, x-api-key, Authorization"
+      },
+      "cron_jobs": [
+        { "schedule": "*/30 * * * *", "endpoint": "/api/cron/sellable?job=sellable-health&action=dry-run" },
+        { "schedule": "0 8 * * 1", "endpoint": "/api/cron/sellable?job=revenue-automation&action=dry-run" },
+        { "schedule": "0 9 * * 1", "endpoint": "/api/cron/sellable?job=seo-automation&action=dry-run" },
+        { "schedule": "0 7 * * *", "endpoint": "/api/cron/sellable?job=daily-sellable-report&action=dry-run" },
+        { "schedule": "0 8 1 * *", "endpoint": "/api/cron/sellable?job=monthly-revenue-review&action=dry-run" }
+      ]
+    },
+    "api_routes": {
+      "main_handler": "api/index.js",
+      "endpoints": [
+        "status",
+        "auth.verify",
+        "ai.recommendations",
+        "brain.brief",
+        "automation.sync",
+        "automation.list",
+        "automation.logs",
+        "automation.run",
+        "automation.events",
+        "dashboard",
+        "sheets",
+        "notion-webhook",
+        "test-env",
+        "hermes",
+        "routes",
+        "brevo",
+        "community-triggers",
+        "social-publishers",
+        "content.publish",
+        "setup-notion",
+        "quiz.history",
+        "sellable-products.publish",
+        "seo-automation.run",
+        "revenue-automation.run",
+        "customer-operations.run",
+        "gumroad.webhook",
+        "brevo.sync",
+        "facebook.publish",
+        "instagram.publish",
+        "threads.publish",
+        "linkedin.publish",
+        "tiktok.publish",
+        "youtube.publish",
+        "pinterest.publish",
+        "google_sheets.run",
+        "cron.sellable.run"
+      ]
+    },
+    "folder_structure": {
+      "api": "Vercel serverless functions (30+ endpoints)",
+      "hermes": "Python-based AI agent system (MCP server)",
+      "lib": "Shared business logic libraries",
+      "schemas": "JSON schema definitions",
+      "scripts": "Bootstrap and utility scripts",
+      "output": "Generated packages and versions",
+      "logs": "Application logs"
+    }
+  },
+  "integrations": [
+    {
+      "name": "Notion",
+      "type": "Database & CMS",
+      "status": "Configured",
+      "usage": "Content management, ideas database, automation tracking, command center",
+      "env_vars": ["NOTION_API_KEY", "NOTION_PARENT_PAGE_ID", "NOTION_IDEAS_DB_ID", "NOTION_CONTENT_DB_ID", "NOTION_AUTOMATIONS_DB_ID", "NOTION_COMMAND_CENTER_DB_ID"]
+    },
+    {
+      "name": "Supabase",
+      "type": "Backend-as-a-Service",
+      "status": "Configured (frontend)",
+      "usage": "Database, authentication, real-time features",
+      "env_vars": ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_BRAND_TOKENS_TABLE", "SUPABASE_QUIZ_TABLE"]
+    },
+    {
+      "name": "Firebase",
+      "type": "Authentication & Hosting",
+      "status": "Configured (frontend)",
+      "usage": "User authentication, app hosting, analytics",
+      "env_vars": ["VITE_FIREBASE_API_KEY", "VITE_FIREBASE_AUTH_DOMAIN", "VITE_FIREBASE_PROJECT_ID", "VITE_FIREBASE_STORAGE_BUCKET", "VITE_FIREBASE_MESSAGING_SENDER_ID", "VITE_FIREBASE_APP_ID", "VITE_FIREBASE_MEASUREMENT_ID"]
+    },
+    {
+      "name": "Hermes MCP",
+      "type": "AI Agent System",
+      "status": "Configured",
+      "usage": "AI-powered business intelligence and automation",
+      "components": ["hermes/main.py", "hermes/mcp_server.py", "hermes/agents/", "hermes/modules/", "hermes/tools/"],
+      "env_vars": ["HERMES_API_KEY", "BACKEND_HERMES_URL", "HERMES_AGENTS_DIR", "HERMES_MODEL"]
+    },
+    {
+      "name": "Groq AI",
+      "type": "LLM API",
+      "status": "Configured",
+      "usage": "AI business brief generation",
+      "env_vars": ["GROQ_API_KEY", "GROQ_MODEL"]
+    },
+    {
+      "name": "Google Sheets",
+      "type": "Spreadsheet Integration",
+      "status": "Configured",
+      "usage": "Data sync, reporting, webhooks",
+      "env_vars": ["SHEETS_WEBHOOK_URL", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REFRESH_TOKEN"]
+    },
+    {
+      "name": "Brevo (Sendinblue)",
+      "type": "Email Marketing",
+      "status": "Configured",
+      "usage": "Email campaigns, subscriber management",
+      "env_vars": ["BREVO_API_KEY", "BREVO_LIST_ID"]
+    },
+    {
+      "name": "Facebook",
+      "type": "Social Media",
+      "status": "Partially configured",
+      "usage": "Page and group publishing",
+      "env_vars": ["FACEBOOK_ACCESS_TOKEN", "FACEBOOK_GROUP_ID", "FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_USERNAME", "META_APP_ID", "META_APP_SECRET"]
+    },
+    {
+      "name": "Instagram",
+      "type": "Social Media",
+      "status": "Partially configured",
+      "usage": "Business account publishing",
+      "env_vars": ["INSTAGRAM_BUSINESS_ACCOUNT_ID", "INSTAGRAM_USERNAME"]
+    },
+    {
+      "name": "LinkedIn",
+      "type": "Social Media",
+      "status": "API available",
+      "usage": "Professional content publishing",
+      "endpoints": ["linkedin.publish"]
+    },
+    {
+      "name": "Threads",
+      "type": "Social Media",
+      "status": "Partially configured",
+      "usage": "Threads publishing",
+      "env_vars": ["THREADS_APP_ID", "THREADS_APP_SECRET", "THREADS_USER_ID"]
+    },
+    {
+      "name": "TikTok",
+      "type": "Social Media",
+      "status": "API available",
+      "usage": "Short-form video publishing",
+      "endpoints": ["tiktok.publish"]
+    },
+    {
+      "name": "YouTube",
+      "type": "Social Media",
+      "status": "API available",
+      "usage": "Video content publishing",
+      "endpoints": ["youtube.publish"]
+    },
+    {
+      "name": "Pinterest",
+      "type": "Social Media",
+      "status": "API available",
+      "usage": "Visual content publishing",
+      "endpoints": ["pinterest.publish"]
+    },
+    {
+      "name": "Gumroad",
+      "type": "E-commerce",
+      "status": "Configured",
+      "usage": "Digital product sales, customer operations",
+      "env_vars": ["GUMROAD_API_KEY"],
+      "endpoints": ["customer-operations.run", "gumroad.webhook"]
+    },
+    {
+      "name": "Firecrawl",
+      "type": "Web Scraping",
+      "status": "Partially configured",
+      "usage": "Web content extraction",
+      "env_vars": ["FIRECRAWL_API_KEY"]
+    },
+    {
+      "name": "Vercel",
+      "type": "Hosting & Deployment",
+      "status": "Active",
+      "usage": "Serverless functions, hosting, cron jobs, analytics",
+      "features": ["Cron jobs", "Edge functions", "Analytics", "Speed Insights", "Toolbar"]
+    },
+    {
+      "name": "SendPulse",
+      "type": "Email Marketing",
+      "status": "Code ready (credentials not set)",
+      "usage": "Email campaign statistics",
+      "env_vars": ["SENDPULSE_API_ID", "SENDPULSE_API_SECRET"]
+    },
+    {
+      "name": "Slack",
+      "type": "Communication",
+      "status": "Partially configured",
+      "usage": "Team notifications",
+      "env_vars": ["SLACK_BOT_TOKEN"]
+    },
+    {
+      "name": "Telegram",
+      "type": "Communication",
+      "status": "Partially configured",
+      "usage": "Bot integration",
+      "env_vars": ["TELEGRAM_BOT_TOKEN"]
+    },
+    {
+      "name": "OpenRouter",
+      "type": "AI Model Gateway",
+      "status": "Partially configured",
+      "usage": "Alternative LLM provider",
+      "env_vars": ["OPENROUTER_API_KEY", "OPENROUTER_MODEL"]
+    },
+    {
+      "name": "ZAI",
+      "type": "AI Platform",
+      "status": "Partially configured",
+      "usage": "AI model hosting",
+      "env_vars": ["ZAI_API_KEY", "ZAI_MODEL_ANTIGRAVITY", "ZAI_MODEL_DASHBOARD", "ZAI_MODEL_HERMES", "ZAI_MODEL_METADATA"]
+    },
+    {
+      "name": "Nous API",
+      "type": "AI Model Provider",
+      "status": "Partially configured",
+      "usage": "LLM inference",
+      "env_vars": ["NOUS_API_KEY"]
+    },
+    {
+      "name": "Antigravity",
+      "type": "AI Automation",
+      "status": "Partially configured",
+      "usage": "Notion-triggered AI workflows",
+      "env_vars": ["ANTIGRAVITY_API_KEY", "NOTION_WEBHOOK_SECRET"]
+    }
+  ],
+  "env_variables": {
+    "backend_env": [
+      "HERMES_API_KEY",
+      "NOTION_TOKEN",
+      "NOTION_BASE_URL",
+      "SELLABLE_DRY_RUN",
+      "NOTION_PHASE21_LIVE_APPROVAL",
+      "DASHBOARD_API_KEY",
+      "BREVO_API_KEY",
+      "BREVO_LIST_ID",
+      "FACEBOOK_ACCESS_TOKEN",
+      "FACEBOOK_GROUP_ID",
+      "FACEBOOK_PAGE_ID",
+      "FACEBOOK_PAGE_USERNAME",
+      "FIRECRAWL_API_KEY",
+      "GOOGLE_CLIENT_ID",
+      "GOOGLE_CLIENT_SECRET",
+      "GOOGLE_REFRESH_TOKEN",
+      "GROQ_API_KEY",
+      "GROQ_MODEL",
+      "HERMES_AGENTS_DIR",
+      "HERMES_MODEL",
+      "INSTAGRAM_BUSINESS_ACCOUNT_ID",
+      "INSTAGRAM_USERNAME",
+      "META_APP_ID",
+      "META_APP_SECRET",
+      "NOTION_API_KEY",
+      "NOTION_ASSETS_DB_ID",
+      "NOTION_AUTOMATIONS_DB_ID",
+      "NOTION_COMMAND_CENTER_DB_ID",
+      "NOTION_CONTENT_DB_ID",
+      "NOTION_DATABASE_AI_DRAFTS",
+      "NOTION_DATABASE_CONTENT_APPROVALS",
+      "NOTION_DATABASE_ENGAGEMENT_LOG",
+      "NOTION_IDEAS_DB_ID",
+      "NOTION_OS_COMMANDS_DB_ID",
+      "NOTION_OS_DB_ID",
+      "NOTION_PARENT_PAGE_ID",
+      "NOUS_API_KEY",
+      "OPENROUTER_API_KEY",
+      "OPENROUTER_MODEL",
+      "SHEETS_WEBHOOK_URL",
+      "SLACK_BOT_TOKEN",
+      "SUPABASE_ANON_KEY",
+      "SUPABASE_BRAND_TOKENS_TABLE",
+      "SUPABASE_QUIZ_TABLE",
+      "SUPABASE_URL",
+      "TELEGRAM_BOT_TOKEN",
+      "THREADS_APP_ID",
+      "THREADS_APP_SECRET",
+      "THREADS_USER_ID",
+      "ANTIGRAVITY_API_KEY",
+      "NOTION_WEBHOOK_SECRET",
+      "SENDPULSE_API_ID",
+      "SENDPULSE_API_SECRET",
+      "BACKEND_HERMES_URL",
+      "ZAI_API_KEY",
+      "ZAI_MODEL_ANTIGRAVITY",
+      "ZAI_MODEL_DASHBOARD",
+      "ZAI_MODEL_HERMES",
+      "ZAI_MODEL_METADATA",
+      "GUMROAD_API_KEY"
+    ],
+    "frontend_env": [
+      "VITE_FIREBASE_API_KEY",
+      "VITE_FIREBASE_AUTH_DOMAIN",
+      "VITE_FIREBASE_PROJECT_ID",
+      "VITE_FIREBASE_STORAGE_BUCKET",
+      "VITE_FIREBASE_MESSAGING_SENDER_ID",
+      "VITE_FIREBASE_APP_ID",
+      "VITE_FIREBASE_MEASUREMENT_ID",
+      "VITE_HERMES_GATEWAY_URL",
+      "VITE_DASHBOARD_API_URL",
+      "VITE_CHAT_API_URL",
+      "VITE_DASHBOARD_API_KEY"
+    ]
+  },
+  "notes": "The DigitallyDefined project is a full-stack digital business operating system deployed on Vercel. The backend is a Node.js/TypeScript serverless application with 30+ API endpoints handling social media publishing, Notion integration, AI-powered business intelligence (via Hermes MCP and Groq), email marketing (Brevo/SendPulse), e-commerce (Gumroad), and scheduled cron jobs. The frontend is a React + Vite + Tailwind CSS SPA with Firebase authentication, Supabase database integration, and Vercel analytics. The system integrates with 20+ external services including all major social platforms (Facebook, Instagram, LinkedIn, Threads, TikTok, YouTube, Pinterest), Notion for content management, Google Sheets for data sync, and multiple AI providers (Groq, OpenRouter, ZAI, Nous). The Hermes MCP server (Python-based) provides advanced AI agent capabilities. The architecture follows a modern Jamstack pattern with serverless functions, edge deployment, and comprehensive environment variable management for multi-service orchestration."
+}
