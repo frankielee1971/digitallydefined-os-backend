@@ -1,5 +1,26 @@
-.vercel/
+# Examples 1:
+(empty — output nothing)
+
+# Example 2 (Project with artifacts):
+# Compiled and build artifacts
+*.pyc
+__pycache__/
+*.o
+*.obj
+dist/
+build/
+target/
+# Dependencies
+.venv/
+venv/
 node_modules/
+.mypy_cache/
+.pytest_cache/
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+# Environment
 .env
 .env.local
 .env.development
