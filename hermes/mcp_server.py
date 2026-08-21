@@ -2,6 +2,10 @@ import os
 import agentops
 from tools.trends import get_trends
 from tools.store_trend import store_trend
+from tools.data_watcher import (
+    get_data_watcher_tools,
+    SKILL_NAME as DATA_WATCHER_SKILL_NAME,
+)
 from modules.omniroute import call_ai, call_ai_with_messages, get_client
 from modules.prompts.hermes_system_prompt import HERMES_SYSTEM_PROMPT
 
@@ -49,5 +53,14 @@ tools = {
     "call_ai": wrapped_call_ai,
     "call_ai_with_messages": wrapped_call_ai_with_messages,
     "get_omniroute_client": get_client,
-    "get_hermes_system_prompt": lambda: HERMES_SYSTEM_PROMPT
+    "get_hermes_system_prompt": lambda: HERMES_SYSTEM_PROMPT,
 }
+
+# ------------------------------------------------------------------
+# Skill: DigitallyDefined Data Watcher
+# Reads live Supabase analytics, analyzes trends/bottlenecks,
+# recommends scaling steps, and pushes tasks into Linear.
+# ------------------------------------------------------------------
+tools.update(get_data_watcher_tools())
+print(f"✓ MCP skill registered: {DATA_WATCHER_SKILL_NAME} "
+      f"({len(tools)} tools available)")

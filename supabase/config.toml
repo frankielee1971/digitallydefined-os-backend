@@ -12,3 +12,8 @@ schedule = "0 5 * * *"
 verify_jwt = false
 # Weekly report: invoke optimization-loop with { "mode": "weekly" }
 schedule = "0 6 * * 1"
+
+# Analytics pipeline: ingestion (open to website tracker) + reporting
+# (protected by x-api-key inside the function itself).
+[functions.analytics]
+verify_jwt = false
