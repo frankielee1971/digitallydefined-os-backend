@@ -10,7 +10,7 @@ interface Ctx {
   env: Record<string, string>;
 }
 
-serve(async (req: Request, ctx: Ctx) => {
+serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { status: 200, headers: corsHeaders(req.headers.get("origin") || "") });
   }
@@ -45,7 +45,7 @@ serve(async (req: Request, ctx: Ctx) => {
   // === Auth check (only for non-cron manual calls) ===
   const isCron = req.headers.get("x-supabase-intention") === "supabase.cron.sellable";
   if (!isCron) {
-    const expected = (ctx.env.DASHBOARD_API_KEY || "").trim();
+    const expected = (Deno.env.get("DASHBOARD_API_KEY") || "").trim();
     const provided = (req.headers.get("x-api-key") || req.headers.get("authorization") || "").trim();
     if (expected && provided !== expected) {
       return new Response(JSON.stringify(buildEnvelope({ ok: false, action: "cron", status: "unauthorized", error: "Unauthorized" })), { status: 401, headers });

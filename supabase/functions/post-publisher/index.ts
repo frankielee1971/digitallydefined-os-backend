@@ -35,8 +35,11 @@ interface Ctx {
   env: Record<string, string>;
 }
 
-serve(async (req: Request, ctx: Ctx) => {
-  const env = ctx.env;
+serve(async (req: Request) => {
+  const env: Record<string, string> = {
+    DASHBOARD_API_KEY: Deno.env.get("DASHBOARD_API_KEY") || "",
+    VITE_DASHBOARD_API_KEY: Deno.env.get("VITE_DASHBOARD_API_KEY") || "",
+  };
   const url = new URL(req.url);
   const segments = url.pathname.split("/").filter(Boolean);
   const postType = segments[segments.length - 1] || "";

@@ -59,5 +59,5 @@ export function listRoadmaps() {
       items.push(JSON.parse(raw));
     } catch { /* skip corrupt */ }
   }
-  return items.sort((a: any, b: any) => new Date(b.storedAt || 0) - new Date(a.storedAt || 0));
+  return items.sort((a: any, b: any) => new Date(b.storedAt || 0).getTime() - new Date(a.storedAt || 0).getTime());
 }

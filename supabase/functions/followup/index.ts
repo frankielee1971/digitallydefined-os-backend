@@ -12,8 +12,12 @@ interface Ctx {
   env: Record<string, string>;
 }
 
-serve(async (req: Request, ctx: Ctx) => {
-  const env = ctx.env;
+serve(async (req: Request) => {
+  const env: Record<string, string> = {
+    SENDGRID_API_KEY: Deno.env.get("SENDGRID_API_KEY") || "",
+    SENDGRID_LIST_ID: Deno.env.get("SENDGRID_LIST_ID") || "",
+    SENDGRID_TEMPLATE_ID: Deno.env.get("SENDGRID_TEMPLATE_ID") || "",
+  };
   const url = new URL(req.url);
 
   if (req.method === "OPTIONS") {
@@ -66,7 +70,7 @@ serve(async (req: Request, ctx: Ctx) => {
         if (!followupDay || !tags.includes(`followup-${followupDay}`)) continue;
 
         // Check if already sent
-        const indicator = buildIndicator({ day: followupDay as string, ts: entry.storedAt });
+        const indicator = buildIndicator({ day: followupDay as string, ts: entry.storedAt as string | number });
         if (indicator.delivered) { skipped++; continue; }
 
         // Send email

@@ -66,7 +66,7 @@ const CONFIG = {
     testEmail: 'francesca@digitallydefined.online',
   },
   backend: {
-    url: envVars.VITE_HERMES_GATEWAY_URL || process.env.VITE_HERMES_GATEWAY_URL || 'https://digitallydefined-os-backend.vercel.app/api/hermes',
+    url: envVars.VITE_HERMES_ENDPOINT || process.env.VITE_HERMES_ENDPOINT || `https://${envVars.SUPABASE_URL?.replace(/^https?:\/\//, '') || 'dijjlppdljpcgyoakdnq.supabase.co'}/functions/v1/hermes`,
     apiKey: envVars.DASHBOARD_API_KEY || process.env.DASHBOARD_API_KEY || process.env.VITE_DASHBOARD_API_KEY,
   },
   testPayload: {

@@ -1,13 +1,27 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { schemaPrompt, validateAgentOutput } from "../_shared/agent-schemas.ts";
+import { isPublicAction, isKnownAction, GET_ONLY_ACTIONS } from "../_shared/action-registry.ts";
 
 type JsonRecord = Record<string, unknown>;
 type Candidate = { provider: string; model: string; key: string; url: string };
 
+const ALLOWED_ORIGINS = new Set([
+  "https://dashboard.digitallydefined.online",
+  "https://digitallydefined.online",
+  "https://www.digitallydefined.online",
+  "http://localhost:3000",
+  "http://localhost:3001",
+  "http://localhost:5173",
+]);
+
+// Echo an allowed origin back; never fall back to a wildcard for credentialed calls.
 const corsHeaders = (origin = "") => ({
-  "Access-Control-Allow-Origin": origin || "*",
+  "Access-Control-Allow-Origin":
+    origin && ALLOWED_ORIGINS.has(origin)
+      ? origin
+      : "https://dashboard.digitallydefined.online",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, x-api-key, x-user-id",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, x-api-key, x-user-id, apikey",
   "Vary": "Origin",
 });
 
@@ -39,61 +53,39 @@ async function insertRow(table: string, payload: JsonRecord, upsert = false) {
 
 const parseJsonReply = (reply: string) => {
   const cleaned = reply
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/i, "")
+    .replace(/^```(?:json)?\s*/gm, "")
+    .replace(/```\s*$/gm, "")
+    .replace(/^```/g, "")
+    .replace(/```$/g, "")
     .trim();
   return JSON.parse(cleaned);
 };
 
-const normalizeOpenRouterModel = (model: string) =>
-  model.replace(/^openrouter\//, "") || "openai/gpt-4o-mini";
-
-const normalizeGroqModel = (model: string) =>
-  model.replace(/^groq\//, "") || "llama-3.3-70b-versatile";
-
+// ============================================================
+// AI PROVIDER: OmniRoute ONLY (single-gateway consolidation)
+// All AI traffic routes through OmniRoute, which fans out to
+// upstream providers on its side. No direct provider calls.
+//
+// Required Supabase secrets:
+//   OMNIROUTE_API_KEY  (required)
+//   OMNIROUTE_BASE_URL (optional, default https://api.omniroute.ai/v1)
+//   OMNIROUTE_MODEL    (optional, default "auto")
+// ============================================================
 const getCandidates = (): Candidate[] => {
-  const openRouterKey = Deno.env.get("OPENROUTER_API_KEY") || "";
-  const groqKey = Deno.env.get("GROQ_API_KEY") || "";
-  const preferred = Deno.env.get("AI_MODEL") || Deno.env.get("OMNIROUTE_MODEL") || "";
-  const candidates: Candidate[] = [];
-
-  if (preferred && preferred !== "free") {
-    if (preferred.startsWith("groq/") && groqKey) {
-      candidates.push({
-        provider: "groq",
-        model: normalizeGroqModel(preferred),
-        key: groqKey,
-        url: "https://api.groq.com/openai/v1/chat/completions",
-      });
-    } else if (openRouterKey) {
-      candidates.push({
-        provider: "openrouter",
-        model: normalizeOpenRouterModel(preferred),
-        key: openRouterKey,
-        url: "https://openrouter.ai/api/v1/chat/completions",
-      });
-    }
+  const omnirouteKey = Deno.env.get("OMNIROUTE_API_KEY") || "";
+  if (!omnirouteKey) {
+    console.error("[hermes] OMNIROUTE_API_KEY is not set. AI actions will fail.");
+    return [];
   }
-
-  if (groqKey && !candidates.some((item) => item.provider === "groq")) {
-    candidates.push({
-      provider: "groq",
-      model: Deno.env.get("GROQ_MODEL_ID") || "llama-3.3-70b-versatile",
-      key: groqKey,
-      url: "https://api.groq.com/openai/v1/chat/completions",
-    });
-  }
-
-  if (openRouterKey && !candidates.some((item) => item.provider === "openrouter")) {
-    candidates.push({
-      provider: "openrouter",
-      model: Deno.env.get("OPENROUTER_MODEL_ID") || "openai/gpt-4o-mini",
-      key: openRouterKey,
-      url: "https://openrouter.ai/api/v1/chat/completions",
-    });
-  }
-
-  return candidates;
+  const baseUrl = (Deno.env.get("OMNIROUTE_BASE_URL") || "https://api.omniroute.ai/v1").replace(/\/+$/, "");
+  return [
+    {
+      provider: "omniroute",
+      model: Deno.env.get("OMNIROUTE_MODEL") || "auto",
+      key: omnirouteKey,
+      url: `${baseUrl}/chat/completions`,
+    },
+  ];
 };
 
 async function runAI(systemPrompt: string, userPrompt: string, jsonMode = false) {
@@ -108,9 +100,6 @@ async function runAI(systemPrompt: string, userPrompt: string, jsonMode = false)
         headers: {
           "Authorization": `Bearer ${candidate.key}`,
           "Content-Type": "application/json",
-          ...(candidate.provider === "openrouter"
-            ? { "HTTP-Referer": "https://digitallydefined.online", "X-Title": "DigitallyDefined" }
-            : {}),
         },
         body: JSON.stringify({
           model: candidate.model,
@@ -120,9 +109,7 @@ async function runAI(systemPrompt: string, userPrompt: string, jsonMode = false)
           ],
           temperature: jsonMode ? 0.35 : 0.7,
           max_tokens: jsonMode ? 1400 : 4000,
-          ...(jsonMode && candidate.provider === "openrouter"
-            ? { response_format: { type: "json_object" } }
-            : {}),
+          ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
         }),
         signal: AbortSignal.timeout(90000),
       });
@@ -171,9 +158,8 @@ Return only JSON:
     schema: "roadmap",
     system: `You create practical DigitallyDefined build roadmaps for Gen X women.
 Use a calm, direct tone. Avoid income promises. Give concrete, sequential actions.
-Use all supplied market signals (scorecard profitability, competition, trend strength, viability, audience, opportunity gaps, privacy needs, energy, burnout risk, AI tools) to tailor the plan.
 Return only JSON:
-{"steps":["...","...","...","..."],"estimatedTime":"...","tools":["...","..."],"aiTools":["...","..."],"profitabilityScore":0,"competitionLevel":"...","trendStrength":"...","nicheViability":"...","nextAction":"..."}`,
+{"steps":["...","...","...","..."],"estimatedTime":"...","tools":["...","..."],"nextAction":"..."}`,
     user: (input) => `Create a personalized roadmap from this profile:
 ${JSON.stringify({
   name: input.name || "Builder",
@@ -181,16 +167,6 @@ ${JSON.stringify({
   answers: input.answers || {},
   profile: input.profile || {},
   goal: input.goal || "",
-  profitabilityScore: input.profitabilityScore ?? null,
-  competitionLevel: input.competitionLevel ?? null,
-  trendStrength: input.trendStrength ?? null,
-  nicheViability: input.nicheViability ?? null,
-  audienceInsight: input.audienceInsight ?? null,
-  opportunityGaps: input.opportunityGaps ?? [],
-  privacyNeeds: input.privacyNeeds ?? null,
-  energyLevel: input.energyLevel ?? null,
-  burnoutRisk: input.burnoutRisk ?? null,
-  aiTools: input.aiTools ?? [],
 })}`,
   },
   reputation: {
@@ -243,70 +219,6 @@ async function runStructuredAgent(agentName: string, inputData: JsonRecord) {
   const validation = validateAgentOutput(config.schema, data);
   if (!validation.valid) throw new Error(`Invalid ${config.schema} output: ${validation.errors.join("; ")}`);
   return { data, provider: result.provider, model: result.model, schema: config.schema };
-}
-
-async function guardInsert(table: string, payload: JsonRecord) {
-  const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-  if (!supabaseUrl || !serviceRoleKey) return;
-  try {
-    await fetch(`${supabaseUrl}/rest/v1/${table}`, {
-      method: "POST",
-      headers: {
-        "apikey": serviceRoleKey,
-        "Authorization": `Bearer ${serviceRoleKey}`,
-        "Content-Type": "application/json",
-        "Prefer": "return=minimal",
-      },
-      body: JSON.stringify(payload),
-    });
-  } catch (err) {
-    console.warn(`[intelligence] Skipped store to "${table}":`, err instanceof Error ? err.message : String(err));
-  }
-}
-
-// Deterministic market analysers (mirror the Node backend agents so the edge
-// intelligence endpoint can aggregate all six analyses without extra AI keys).
-function analyzeAudience(niche: string) {
-  return {
-    niche,
-    painPoints: ["Overwhelm from too much information", "Not knowing where to start", "Fear of choosing the wrong niche", "Confusion about tech setup"],
-    desires: ["Clarity", "Confidence", "A simple roadmap", "Fast wins"],
-    motivations: ["Freedom", "Flexibility", "Extra income", "Creative expression"],
-    buyingTriggers: ["Clear step-by-step guidance", "Fast setup", "Beginner-friendly tools", "Proof of results"],
-  };
-}
-
-function analyzeCompetition(niche: string) {
-  return {
-    niche,
-    topCompetitors: [
-      { name: "Competitor A", strengths: ["Strong brand", "Consistent publishing", "Clear offer"], weaknesses: ["High pricing", "Slow response time"] },
-      { name: "Competitor B", strengths: ["Great community", "High engagement"], weaknesses: ["Weak onboarding", "No automation"] },
-    ],
-    positioningInsights: ["Most competitors focus on beginners", "Few competitors offer automation-ready systems", "Opportunity to differentiate with simplicity + speed"],
-    recommendedActions: ["Position yourself as the fast, simple alternative", "Create a frictionless onboarding flow", "Offer a micro-offer competitors don't have"],
-  };
-}
-
-function analyzeTrends(niche: string) {
-  return {
-    niche,
-    risingTopics: [`${niche} beginner frameworks`, `${niche} automation workflows`, `${niche} micro-offers`, `${niche} audience building`],
-    platformTrends: ["Short-form video growth", "Newsletter revival", "AI-assisted content creation", "Community-driven learning"],
-    searchMomentum: { last30Days: "Moderate growth", last90Days: "Strong upward trend", prediction: "High opportunity" },
-    recommendedActions: ["Create 3 pillar content pieces around rising topics", "Publish weekly short-form content", "Build a simple lead magnet", "Start a newsletter"],
-  };
-}
-
-function analyzeOpportunities(niche: string) {
-  return {
-    niche,
-    gaps: ["No simple beginner roadmap", "No automation-ready templates", "No micro-offers for fast wins"],
-    underservedAudiences: ["Busy professionals", "Moms building digital businesses", "Creators who hate tech complexity"],
-    unmetNeeds: ["Clear step-by-step guidance", "Fast setup systems", "Automation without overwhelm"],
-    recommendedOpportunities: ["Create a beginner-friendly starter kit", "Build a 1-hour automation setup", "Offer a micro-offer that solves one painful problem"],
-  };
 }
 
 function calculateWealth(input: JsonRecord) {
@@ -374,12 +286,14 @@ serve(async (req) => {
   }
 
   const action = String(body.action || "").trim();
-  const publicAgentAction = action.startsWith("agent.");
-  const publicFormAction = ["subscribe", "contact", "quiz.complete", "public.chat"].includes(action);
+  // Access rules come from _shared/action-registry.ts (single source of truth).
+  if (action && !isKnownAction(action)) {
+    return json({ error: `Unknown action: ${action}` }, 400, origin);
+  }
   const expectedKey = (Deno.env.get("DASHBOARD_API_KEY") || "").trim();
   const providedKey = (req.headers.get("x-api-key") || req.headers.get("authorization") || "").trim();
 
-  if (!publicAgentAction && !publicFormAction && (!expectedKey || providedKey !== expectedKey)) {
+  if (!isPublicAction(action) && (!expectedKey || providedKey !== expectedKey)) {
     return json({ error: "Unauthorized - Invalid or missing API key" }, 401, origin);
   }
 
@@ -418,7 +332,12 @@ serve(async (req) => {
     const email = String(body.email || "").trim().toLowerCase();
     const superpower = String(body.superpower || "").trim().toLowerCase();
     if (!name || !email || !superpower) return json({ error: "Name, email, and superpower are required" }, 400, origin);
+
+    // Import Brevo email service
+    const { detectEmailMode, sendQuizEmail, getBrevoConfig } = await import("../_shared/brevo-email.ts");
+
     try {
+      // Store quiz result in Supabase
       await insertRow("website_leads", {
         email,
         name,
@@ -434,22 +353,67 @@ serve(async (req) => {
         roadmap: body.roadmap || {},
         source: String(body.source || "digital-superpower-quiz"),
       });
-      return json({ success: true, id: saved?.[0]?.id || null, superpower }, 200, origin);
+
+      // Route email sending based on mode
+      const brevoConfig = getBrevoConfig();
+      const mode = detectEmailMode(body, brevoConfig);
+      const emailResult = await sendQuizEmail(
+        {
+          toEmail: email,
+          toName: name,
+          superpower,
+          roadmap: body.roadmap as Record<string, unknown> | undefined,
+          answers: body.answers as Record<string, string> | undefined,
+        },
+        mode,
+        brevoConfig
+      );
+
+      console.log(`[quiz.complete] email_mode=${mode} sent=${emailResult.emailSent} skipped=${emailResult.emailSkipped}`);
+
+      return json({
+        success: true,
+        id: saved?.[0]?.id || null,
+        superpower,
+        emailMode: mode,
+        emailSent: emailResult.emailSent,
+        emailSkipped: emailResult.emailSkipped,
+        brevoUsed: emailResult.brevoUsed,
+      }, 200, origin);
     } catch (error) {
+      console.error("[quiz.complete] Error:", error);
       return json({ error: error instanceof Error ? error.message : String(error) }, 500, origin);
     }
   }
 
   if (action === "public.chat") {
     const message = String(body.message || "").trim().slice(0, 1200);
+    const topic = String(body.topic || "default").trim();
     if (!message) return json({ error: "A message is required" }, 400, origin);
     try {
       const result = await runAI(
-        `You are the public DigitallyDefined planning guide for Gen X women.
-Explain faceless digital real estate, retirement planning concepts, niche validation, and the website tools in plain language.
-Do not promise income, present projections as guarantees, or provide individualized financial advice.
-Keep responses concise and end with one relevant next step inside the DigitallyDefined tools.`,
-        message,
+        `You are Hermes, the DigitallyDefined planning mentor for Gen X women who want to close their retirement gap by building faceless digital real estate.
+
+WHAT DIGITALLYDEFINED HELPS WITH:
+- Turning lived experience into digital property that earns without requiring your face or constant posting.
+- The core path: (1) know your retirement number → (2) choose one asset type → (3) validate the niche → (4) build the first small asset → (5) document & automate it.
+- Why "faceless" matters: privacy, control, and asset ownership over personal visibility.
+
+KNOWLEDGE OF THE TOOLS (use them as concrete next steps):
+- /gap — Retirement Gap Calculator: turn a vague fear into a planning number (current age, savings, monthly contribution, desired income).
+- /quiz — Digital Superpower Quiz: discover your Builder/Creator/Educator/Strategist/Connector profile.
+- /scorecard — Niche Profitability Scorecard: test demand, competition, monetization, and privacy fit of an idea.
+- /freedom — Freedom Number Calculator: model a portfolio of assets to hit a monthly income target.
+- /roi — 10X ROI Calculator: model lead flow/revenue for a rank-and-rent property.
+- /tools — all free planning tools; /start-here — the step-by-step path.
+
+COMMON ASSET TYPES: template hubs & printables, paid newsletters, YouTube automation, rank & rent sites, digital products.
+
+HOW TO ANSWER:
+- Be warm, direct, practical, and privacy-first. No hype, no invented urgency, no income promises, and never give individualized financial advice or present projections as guarantees.
+- Always frame answers around the "faceless digital real estate for retirement" path.
+- Keep responses concise (a few sentences) and ALWAYS end with one concrete next step inside the DigitallyDefined tools (reference the route path).`,
+        `${topic !== "default" ? `Current page context: ${topic}.\n` : ""}${message}`,
       );
       return json({ success: true, reply: result.reply, provider: result.provider, model: result.model }, 200, origin);
     } catch (error) {
@@ -457,7 +421,77 @@ Keep responses concise and end with one relevant next step inside the DigitallyD
     }
   }
 
-  if (publicAgentAction) {
+  // =============================================
+  // DEVELOPER MODE — dedicated protected endpoint
+  // Used by the MentorWidget when dev-mode requests are detected.
+  // Returns structured guidance (filePath, codeSnippet, exactChange).
+  // Requires the DASHBOARD_API_KEY secret to match the x-api-key header.
+  // =============================================
+  if (action === "mentor.dev") {
+    const message = String(body.message || "").trim().slice(0, 2000);
+    const topic = String(body.topic || "default").trim();
+    const currentUrl = String(body.currentUrl || "").trim();
+    if (!message) return json({ error: "A message is required" }, 400, origin);
+    try {
+      const system = `You are Hermes running in DEVELOPER MODE for the DigitallyDefined website — a Vite + React 18 + React Router + Supabase project using a custom "soft brutalism" design system (sharp 1-2px solid #111 borders, no border-radius, no shadows, Inter headings, DM Sans body).
+
+ABSOLUTE RULES:
+- NEVER give generic HTML/CSS advice. Every website-related request MUST reference one or more REAL files from the map below and return filePath + exactChange.
+- If the request involves layout/navigation/styling, the answer is almost always in BrandNav.jsx, a page in src/pages, and/or global.css.
+- codeSnippet: show the current/most relevant code shape in the real file (describe with realistic placeholders if the exact lines aren't shown), or the minimal corrected snippet.
+- exactChange: precise instructions — which file, which block, what to add/remove/edit.
+- This is GUIDANCE ONLY — Cline applies the actual edit. Never claim you edited the code.
+
+PROJECT FILE MAP (use these exact paths):
+- src/styles/global.css — design tokens in :root (--color-accent:#F18B25, --color-blue:#47B7D4, --color-border:#111111, --space-xs:8px .. --space-2xl:80px, --font-heading), and all shared classes (.btn, .btn--primary, .btn--outline, .nav-cta, .brand-nav, .brand-nav__inner, .container, .container--narrow, .chat-* .mentor-*). Header/nav CSS lives under .brand-nav.
+- src/components/BrandNav.jsx — the sticky site header. It renders a .brand-nav__inner grid (logo, .desktop-nav links, optional external .nav-cta links from the externalLinks array, and a mobile menu button). To add a CTA button next to the header nav, edit this file.
+- src/components/Layout/SiteLayout.jsx — layout shell: renders <BrandNav />, <BrandFooter />, and <MentorWidget topic={mentorTopic} />.
+- src/components/BrandFooter.jsx — site footer with a Join the Community button.
+- src/components/MentorWidget.jsx — Hermes chat widget (floating button bottom-right + chat panel).
+- src/hooks/useMentor.js — mentor state hook; topic prompts + dev-mode keyword detection.
+- src/lib/hermes.js — edge-function request helper (public.chat / mentor.dev actions).
+- src/App.jsx — React Router routes. "/" = Home page, "/gap" = RetirementGapCalculator, "/tools" = Tools, "/scorecard", "/quiz", "/freedom", "/roi", "/about", "/contact", "/pricing", "/products", "/start-here", "/automation".
+- src/pages/Home.jsx — homepage (hero, manifesto card, asset cards, final CTA section with a "Calculate My Retirement Gap →" button linking to "/gap").
+- src/pages/StartHere.jsx, Tools.jsx, About.jsx, Contact.jsx, Pricing.jsx, Products.jsx, Automation.jsx, ComingSoon.jsx — other landing pages.
+- src/pages/Calculator/RetirementGapCalculator.jsx, FreedomNumberCalculator.jsx, TenXROICalculator.jsx — calculator pages.
+- src/pages/Quiz/DigitalSuperpowerQuiz.jsx, src/pages/Scorecard/NicheProfitabilityScorecard.jsx — interactive tools.
+
+PROJECT CONVENTIONS:
+- Buttons/CTAs: <a href="..." className="btn btn--primary">Label →</a> or <button className="btn btn--primary">.
+- Header CTA: render <a href="/gap" className="nav-cta btn">Calculate My Gap →</a> as an <a> in BrandNav (optionally inside the externalLinks array) and style it under .nav-cta in global.css.
+- Sections use max-width match (.container or the wide sections defined in global.css), bordered with 1px solid #111.
+- No rounded corners, no box-shadows anywhere.
+
+Update the user's topic context: topic just describes the current page. currentUrl is the live page the user is on. When page routing is involved (e.g. "CTA button to the retirement gap calculator from the header"), point to the route path /gap and the target file.
+
+Return ONLY valid JSON with these keys (include only relevant ones):
+{"reply":"...", "filePath":"src/...", "codeSnippet":"...", "exactChange":"..."}`;
+      const user = `Topic context: ${topic}\nCurrent page URL: ${currentUrl || "unknown"}\nUser request: ${message}\n\nReturn only the JSON object described in your instructions.`;
+      const result = await runAI(system, user, true);
+
+      let data: JsonRecord = {};
+      try {
+        data = parseJsonReply(result.reply);
+      } catch {
+        data = { reply: result.reply };
+      }
+
+      return json({
+        success: true,
+        reply: String(data.reply || "Here is the guidance."),
+        ...(data.filePath ? { filePath: String(data.filePath) } : {}),
+        ...(data.codeSnippet ? { codeSnippet: String(data.codeSnippet) } : {}),
+        ...(data.exactChange ? { exactChange: String(data.exactChange) } : {}),
+        provider: result.provider,
+        model: result.model,
+        isDevGuidance: true,
+      }, 200, origin);
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : String(error) }, 502, origin);
+    }
+  }
+
+  if (action.startsWith("agent.")) {
     const aliases: Record<string, string> = {
       quiz: "quiz",
       "digital-superpower-quiz": "quiz",
@@ -521,86 +555,35 @@ Keep responses concise and end with one relevant next step inside the DigitallyD
     try {
       // Step 1: Determine superpower from quiz answers
       const quizResult = await runStructuredAgent("quiz", { answers });
+
       if (!quizResult || !quizResult.data) {
         throw new Error("Quiz analysis failed to return data");
       }
 
-      const superpowerName = quizResult.data.superpowerName || "Builder";
-      const niche = String(body.niche || superpowerName || "digital business");
-
-      // Step 2: Generate personalized roadmap, passing all market signals
-      const marketSignals: JsonRecord = {
-        profitabilityScore: body.profitabilityScore ?? null,
-        competitionLevel: body.competitionLevel ?? null,
-        trendStrength: body.trendStrength ?? null,
-        nicheViability: body.nicheViability ?? null,
-        audienceInsight: body.audienceInsight ?? null,
-        opportunityGaps: body.opportunityGaps ?? [],
-        privacyNeeds: body.privacyNeeds ?? null,
-        energyLevel: body.energyLevel ?? null,
-        burnoutRisk: body.burnoutRisk ?? null,
-        aiTools: body.aiTools ?? [],
-      };
-
+      // Step 2: Generate personalized roadmap based on superpower
       const roadmapResult = await runStructuredAgent("roadmap", {
         name: userId.split('@')[0] || "Builder",
-        superpower: superpowerName.toLowerCase() || "builder",
+        superpower: quizResult.data.superpowerName?.toLowerCase() || "builder",
         answers,
         profile: {},
-        goal: "Build faceless digital real estate that supports retirement and creates a transferable family asset",
-        ...marketSignals,
+        goal: "Build faceless digital real estate that supports retirement and creates a transferable family asset"
       });
 
-      // Step 3: Aggregate the remaining four analyses
-      const audience = analyzeAudience(niche);
-      const competition = analyzeCompetition(niche);
-      const trends = analyzeTrends(niche);
-      const opportunities = analyzeOpportunities(niche);
+      // Step 3: Return structured intelligence response
+      return json({
+        success: true,
+        data: {
+          superpower: quizResult.data.superpowerName,
+          superpowerDescription: quizResult.data.superpowerDescription || "",
+          recommendations: quizResult.data.recommendedPathways || [],
+          confidenceScore: quizResult.data.confidenceScore || 0.85,
+          roadmap: (roadmapResult as { success?: boolean; data?: unknown }).success
+            ? roadmapResult.data
+            : null,
+          rawQuizResult: quizResult.data
+        }
+      }, 200, origin);
 
-      const intelligenceData: JsonRecord = {
-        superpower: superpowerName,
-        superpowerDescription: quizResult.data.superpowerDescription || "",
-        recommendations: quizResult.data.recommendedPathways || [],
-        confidenceScore: quizResult.data.confidenceScore || 0.85,
-        roadmap: roadmapResult.data || null,
-        ...marketSignals,
-        audience,
-        competition,
-        trends,
-        opportunities,
-        niche,
-        rawQuizResult: quizResult.data,
-      };
-
-      // Step 4: Persist (guarded) — superpower profile, roadmap, intelligence,
-      // niche scoring, and trend data.
-      await guardInsert("superpower_profiles", {
-        user_id: userId,
-        superpower_name: superpowerName,
-        roadmap: intelligenceData.roadmap,
-        data: intelligenceData,
-      });
-      await guardInsert("quiz_roadmaps", {
-        user_id: userId,
-        superpower: superpowerName,
-        answers,
-        roadmap: intelligenceData.roadmap,
-        source: "intelligence",
-      });
-      await guardInsert("intelligence_results", { user_id: userId, data: intelligenceData });
-      if (intelligenceData.profitabilityScore != null) {
-        await guardInsert("niche_scores", {
-          user_id: userId,
-          profitability_score: intelligenceData.profitabilityScore,
-          competition_level: intelligenceData.competitionLevel,
-          trend_strength: intelligenceData.trendStrength,
-          niche_viability: intelligenceData.nicheViability,
-          data: intelligenceData,
-        });
-      }
-      await guardInsert("trends", { user_id: userId, data: trends });
-
-      return json({ success: true, data: intelligenceData }, 200, origin);
     } catch (error) {
       console.error("[intelligence] Error:", error);
       return json({
@@ -612,55 +595,32 @@ Keep responses concise and end with one relevant next step inside the DigitallyD
 
   if (action === "dashboard") return json(dashboardData, 200, origin);
   if (action === "automation.list") return json({ automations: dashboardData.automations }, 200, origin);
-   if (action === "personalize") {
-     const result = await runOptimizationLoop({ signals: body.signals || [] });
-     return json({ success: true, data: result.personalization }, 200, origin);
-   }
-   if (action === "events") {
-     const { guardInsert } = await import('../lib/persist.js');
-     const events = Array.isArray(body.events) ? body.events : [];
-     let saved = 0;
-     for (const e of events) {
-       const row = await guardInsert('optimization_signals', {
-         user_id: body.userId || null,
-         event: e?.event || 'page',
-         page: e?.page || null,
-         payload: e || {},
-       });
-       if (row?.ok !== false) saved += 1;
-     }
-     return json({ success: true, ingested: saved }, 200, origin);
-   }
-   if (action === "optimization.loop") {
-     const signals = body.signals || [];
-     const loop = await runOptimizationLoop({ signals });
-     await guardInsert('personalization', { user_id: body.userId || null, data: loop.personalization });
-     await guardInsert('user_clusters', { user_id: body.userId || null, cluster_key: loop.clusters[0]?.key || 'general', cluster: loop.clusters[0] || {} });
-     return json({ success: true, clusters: loop.clusters, signalCount: loop.signals.length }, 200, origin);
-   }
-   if (action === "optimization.weekly") {
-     const signals = await (async () => {
-       const url = Deno.env.get("SUPABASE_URL") || "";
-       const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-       if (!url || !key) return [];
-       try {
-         const res = await fetch(`${url}/rest/v1/optimization_signals?select=*&limit=5000`, {
-           headers: { apikey: key, Authorization: `Bearer ${key}` });
-         return res.ok ? await res.json() : [];
-       } catch { return []; }
-     })();
-     const period = new Date().toISOString().slice(0, 10);
-     const report = { period, signalCount: signals.length, generatedAt: new Date().toISOString() };
-     await insertRow('weekly_reports', { period, report });
-     return json({ success: true, period, report }, 200, origin);
-   }
-   if (action === "dashboard") return json(dashboardData, 200, origin);
   if (action === "status" || action === "routes") {
+    const routes: string[] = [
+      "subscribe",
+      "contact",
+      "quiz.complete",
+      "public.chat",
+      "dashboard",
+      "automation.list",
+      "agent.quiz",
+      "agent.niche",
+      "agent.roadmap",
+      "agent.scorecard",
+      "agent.retirement-guide",
+      "agent.asset-plan",
+      "agent.offer-architect",
+      "agent.wealth",
+      "agent.reputation",
+      "intelligence",
+      "chat",
+      "mentor.dev",
+    ];
     return json({
       ok: true,
       status: "running",
       timestamp: Date.now(),
-      routes: ["subscribe", "contact", "quiz.complete", "public.chat", "dashboard", "automation.list", "agent.quiz", "agent.niche", "agent.roadmap", "agent.scorecard", "agent.retirement-guide", "agent.asset-plan", "agent.offer-architect", "agent.wealth", "agent.reputation", "intelligence", "chat"],
+      routes,
     }, 200, origin);
   }
 

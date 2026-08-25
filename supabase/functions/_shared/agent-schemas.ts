@@ -28,16 +28,11 @@ export const AGENT_SCHEMAS: Record<string, AgentSchema> = {
   },
   roadmap: {
     title: "Personalized Faceless Asset Roadmap",
-    required: ["steps", "estimatedTime", "tools", "aiTools", "profitabilityScore", "competitionLevel", "trendStrength", "nicheViability", "nextAction"],
+    required: ["steps", "estimatedTime", "tools", "nextAction"],
     properties: {
       steps: { type: "array" },
       estimatedTime: { type: "string" },
       tools: { type: "array" },
-      aiTools: { type: "array" },
-      profitabilityScore: { type: "number" },
-      competitionLevel: { type: "string" },
-      trendStrength: { type: "string" },
-      nicheViability: { type: "string" },
       nextAction: { type: "string" },
     },
   },

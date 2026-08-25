@@ -3,15 +3,15 @@
   "version": "1.0.0",
   "description": "DigitallyDefined API Backend - Powers the website and dashboard with Hermes AI integration",
   "type": "module",
-  "main": "src/index.js",
+  "main": "api/index.js",
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "node --watch src/index.js"
+    "start": "vercel dev",
+    "dev": "vercel dev"
   },
   "dependencies": {
     "express": "^4.18.2",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
-    "@supabase/supabase-js": "^2.45.0"
+    "@supabase/supabase-js": "^2.112.2"
   }
 }

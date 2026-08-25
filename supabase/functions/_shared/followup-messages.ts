@@ -44,7 +44,7 @@ export interface BuildMessageOptions {
   resultKey?: string; tags?: string[]; profile?: { name?: string }; roadmap?: object; tags2?: string[];
 }
 
-export function buildMessage({ resultKey, tags = [], profile = null, roadmap = null }: BuildMessageOptions): string {
+export function buildMessage({ resultKey, tags = [], profile = undefined, roadmap = undefined }: BuildMessageOptions): string {
   const fallback = getFallbackUser(resultKey || '');
   const user = { name: profile?.name || 'You', resultKey: resultKey || fallback.resultKey };
   if (!user.name || user.name === '') user.name = 'You';

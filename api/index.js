@@ -4,34 +4,53 @@
 
 const ALLOWED_ORIGINS = [
   'https://dashboard.digitallydefined.online',
+  'https://digitallydefined.online',
+  'https://www.digitallydefined.online',
   'http://localhost:3000',
+  'http://localhost:3001',
   'http://localhost:5173',
+  ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : []),
 ];
 
+// NOTE: Keep these lists in sync with supabase/functions/_shared/action-registry.ts
+// (single source of truth). Duplicated here because this file is plain Node/Vercel JS
+// and cannot import Deno TS modules.
 const ALLOWED_ACTIONS = new Set([
   'status',
+  'routes',
   'auth.verify',
+  'test-env',
+  'dashboard',
   'ai.recommendations',
   'brain.brief',
+  'chat',
+  'mentor.dev',
+  'hermes.agent',
+  'intelligence',
   'automation.sync',
   'automation.list',
   'automation.logs',
-  'automation.run',
   'automation.events',
-  'dashboard',
-  'test-env',
+  'automation.run',
+  'subscribe',
+  'contact',
+  'quiz.complete',
+  'public.chat',
+  'integration.googleAnalytics',
+  'integration.social',
+  'integration.email',
+  'integration.community',
 ]);
 
 const GET_ONLY_ACTIONS = new Set([
   'status',
+  'routes',
   'auth.verify',
-  'ai.recommendations',
-  'brain.brief',
+  'test-env',
+  'dashboard',
   'automation.list',
   'automation.logs',
   'automation.events',
-  'dashboard',
-  'test-env',
 ]);
 
 const POST_ONLY_ACTIONS = new Set([
@@ -68,72 +87,16 @@ function getRateLimitMap() {
 
 const FETCH_TIMEOUT_MS = 5000;
 
-// AI Provider configuration - supports multiple free/paid providers with OmniRoute for smart routing
+// AI Provider configuration — OmniRoute ONLY (single gateway).
+// All AI calls go through OmniRoute, which routes to upstream providers itself.
+// Required env: OMNIROUTE_API_KEY. Optional: OMNIROUTE_BASE_URL, OMNIROUTE_MODEL.
 const AI_PROVIDERS = {
-  groq: {
-    url: 'https://api.groq.com/openai/v1/chat/completions',
-    keyEnv: 'GROQ_API_KEY',
-    models: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768'],
-    defaultModel: 'llama-3.3-70b-versatile',
-    priority: 1,
-  },
-  nvidia: {
-    url: 'https://integrate.api.nvidia.com/v1/chat/completions',
-    keyEnv: 'NVIDIA_API_KEY',
-    models: ['meta/llama-3.1-405b-instruct', 'meta/llama3-70b-instruct'],
-    defaultModel: 'meta/llama3-70b-instruct',
-    priority: 2,
-  },
-  openrouter: {
-    url: 'https://openrouter.ai/api/v1/chat/completions',
-    keyEnv: 'OPENROUTER_API_KEY',
-    models: ['meta-llama/llama-3-70b-instruct', 'mistralai/mistral-large'],
-    defaultModel: 'meta-llama/llama-3-70b-instruct',
-    priority: 3,
-  },
-  antigravity: {
-    url: process.env.ANTIGRAVITY_BASE_URL || 'https://api.antigravity.ai/v1/chat/completions',
-    keyEnv: 'ANTIGRAVITY_API_KEY',
-    models: ['antigravity-v1'],
-    defaultModel: 'antigravity-v1',
-    priority: 4,
-  },
-  // OmniRoute - routes to multiple free AI providers automatically
   omniroute: {
     url: process.env.OMNIROUTE_BASE_URL || 'https://api.omniroute.ai/v1/chat/completions',
     keyEnv: 'OMNIROUTE_API_KEY',
     models: ['auto'], // OmniRoute auto-selects best available model
     defaultModel: 'auto',
-    priority: 0, // Highest priority when available - routes to free providers
-  },
-  // Placeholder configs for future providers - just add API keys to enable
-  nararouter: {
-    url: process.env.NARAROUTER_BASE_URL || 'https://api.nara.router/v1/chat/completions',
-    keyEnv: 'NARAROUTER_API_KEY',
-    models: ['auto'],
-    defaultModel: 'auto',
-    priority: 5,
-  },
-  tokenrouter: {
-    url: process.env.TOKENROUTER_BASE_URL || 'https://api.tokenrouter.io/v1/chat/completions',
-    keyEnv: 'TOKENROUTER_API_KEY',
-    models: ['auto'],
-    defaultModel: 'auto',
-    priority: 6,
-  },
-  poolside: {
-    url: process.env.POOLSIDE_BASE_URL || 'https://api.poolside.ai/v1/chat/completions',
-    keyEnv: 'POOLSIDE_API_KEY',
-    models: ['poolside-v1'],
-    defaultModel: 'poolside-v1',
-    priority: 7,
-  },
-  agnesai: {
-    url: process.env.AGNESAI_BASE_URL || 'https://api.agnes.ai/v1/chat/completions',
-    keyEnv: 'AGNESAI_API_KEY',
-    models: ['agnes-v1'],
-    defaultModel: 'agnes-v1',
-    priority: 8,
+    priority: 0,
   },
 };
 

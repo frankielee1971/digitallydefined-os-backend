@@ -20,7 +20,8 @@ import { handleCors } from "../_shared/cors-utils.ts";
 
 type JsonRecord = Record<string, unknown>;
 
-const API_KEY = Deno.env.get("DASHBOARD_API_KEY") || "DigitallyDefined-OS-2026";
+const API_KEY = Deno.env.get("DASHBOARD_API_KEY") || "";
+if (!API_KEY) console.error("[analytics] DASHBOARD_API_KEY secret is not set. Authenticated calls will fail.");
 
 const json = (body: unknown, status = 200, origin = "") =>
   new Response(JSON.stringify(body), {
@@ -307,7 +308,7 @@ async function getOverview(days = 30) {
       unique_sessions: sessions.length,
       avg_session_seconds: avgSessionSeconds,
       bounce_rate: rate(bounces, sessions.length),
-      top_pages: Object.entries(byPage).sort((a, b) => b[1] - a[1]).slice(0, 10)
+      top_pages: Object.entries(byPage).sort((a, b) => Number(b[1]) - Number(a[1])).slice(0, 10)
         .map(([page, views]) => ({ page, views })),
     },
     engagement: {
@@ -362,35 +363,21 @@ async function getOverview(days = 30) {
 type Candidate = { provider: string; model: string; key: string; url: string };
 
 const getCandidates = (): Candidate[] => {
-  const candidates: Candidate[] = [];
-  const agnesKey = Deno.env.get("AGNES_API_KEY") || "";
-  const openRouterKey = Deno.env.get("OPENROUTER_API_KEY") || "";
-  const groqKey = Deno.env.get("GROQ_API_KEY") || "";
-  if (agnesKey) {
-    candidates.push({
-      provider: "agnes",
-      model: Deno.env.get("AGNES_MODEL") || "agnes-2.5-flash",
-      key: agnesKey,
-      url: `${Deno.env.get("AGNES_BASE_URL") || "https://apihub.agnes-ai.com/v1"}/chat/completions`,
-    });
+  // OmniRoute ONLY (single-gateway consolidation)
+  const omnirouteKey = Deno.env.get("OMNIROUTE_API_KEY") || "";
+  if (!omnirouteKey) {
+    console.error("[analytics] OMNIROUTE_API_KEY is not set. AI recommendations will fail.");
+    return [];
   }
-  if (openRouterKey) {
-    candidates.push({
-      provider: "openrouter",
-      model: Deno.env.get("OPENROUTER_MODEL_ID") || "openai/gpt-4o-mini",
-      key: openRouterKey,
-      url: "https://openrouter.ai/api/v1/chat/completions",
-    });
-  }
-  if (!candidates.length && groqKey) {
-    candidates.push({
-      provider: "groq",
-      model: Deno.env.get("GROQ_MODEL_ID") || "llama-3.3-70b-versatile",
-      key: groqKey,
-      url: "https://api.groq.com/openai/v1/chat/completions",
-    });
-  }
-  return candidates;
+  const baseUrl = (Deno.env.get("OMNIROUTE_BASE_URL") || "https://api.omniroute.ai/v1").replace(/\/+$/, "");
+  return [
+    {
+      provider: "omniroute",
+      model: Deno.env.get("OMNIROUTE_MODEL") || "auto",
+      key: omnirouteKey,
+      url: `${baseUrl}/chat/completions`,
+    },
+  ];
 };
 
 async function runAI(systemPrompt: string, userPrompt: string) {
@@ -404,9 +391,6 @@ async function runAI(systemPrompt: string, userPrompt: string) {
         headers: {
           Authorization: `Bearer ${c.key}`,
           "Content-Type": "application/json",
-          ...(c.provider === "openrouter"
-            ? { "HTTP-Referer": "https://digitallydefined.online", "X-Title": "DigitallyDefined" }
-            : {}),
         },
         body: JSON.stringify({
           model: c.model,

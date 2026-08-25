@@ -1,1 +1,0 @@
-"""Utility helpers and Pydantic models for the FastAPI backend."""
