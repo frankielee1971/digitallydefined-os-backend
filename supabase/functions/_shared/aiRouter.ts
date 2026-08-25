@@ -15,7 +15,9 @@ export async function run(modelName: string, payload: Record<string, unknown> = 
   const OMNIROUTE_KEY = Deno.env.get('OMNIROUTE_API_KEY') || '';
   if (!OMNIROUTE_KEY) throw new Error("OMNIROUTE_API_KEY is not configured");
 
-  const baseUrl = (Deno.env.get('OMNIROUTE_BASE_URL') || 'https://api.omniroute.ai/v1').replace(/\/+$/, '');
+  // Normalize: accept base URL with or without a trailing "/v1".
+  const rawBase = (Deno.env.get('OMNIROUTE_BASE_URL') || 'https://api.omniroute.ai/v1').trim();
+  const baseUrl = rawBase.replace(/\/+$/, "").replace(/\/v1$/, "") + '/v1';
   const model = modelName && modelName !== 'auto' ? modelName : getBestModel("medium");
 
   const res = await fetch(`${baseUrl}/chat/completions`, {

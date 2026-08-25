@@ -87,12 +87,21 @@ function getRateLimitMap() {
 
 const FETCH_TIMEOUT_MS = 5000;
 
+// Accept base URL with or without a trailing "/v1"; always resolve to "<origin>/v1/chat/completions".
+function omnirouteEndpoint(raw) {
+  const base = String(raw || process.env.OMNIROUTE_BASE_URL || 'https://api.omniroute.ai/v1')
+    .trim()
+    .replace(/\/+$/, '')
+    .replace(/\/v1$/, '');
+  return `${base}/v1/chat/completions`;
+}
+
 // AI Provider configuration — OmniRoute ONLY (single gateway).
 // All AI calls go through OmniRoute, which routes to upstream providers itself.
 // Required env: OMNIROUTE_API_KEY. Optional: OMNIROUTE_BASE_URL, OMNIROUTE_MODEL.
 const AI_PROVIDERS = {
   omniroute: {
-    url: process.env.OMNIROUTE_BASE_URL || 'https://api.omniroute.ai/v1/chat/completions',
+    baseUrl: process.env.OMNIROUTE_BASE_URL || 'https://api.omniroute.ai/v1',
     keyEnv: 'OMNIROUTE_API_KEY',
     models: ['auto'], // OmniRoute auto-selects best available model
     defaultModel: 'auto',
@@ -525,7 +534,7 @@ Respond ONLY with a JSON object in this exact format (no markdown, no extra text
       requestBody.model = 'auto';
     }
 
-    const res = await fetchWithTimeout(selectedProvider.url, {
+    const res = await fetchWithTimeout(omnirouteEndpoint(selectedProvider.baseUrl), {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,

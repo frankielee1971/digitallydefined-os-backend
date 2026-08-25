@@ -23,9 +23,17 @@ try {
   console.log('⚠️  AgentOps not available:', e.message);
 }
 
-const OMNIROUTE_BASE_URL = (Deno.env.get('OMNIROUTE_BASE_URL') || 'http://localhost:20128' || 'http://localhost:20128').replace(/\/$/, '');
-const OMNIROUTE_API_KEY = (Deno.env.get('OMNIROUTE_API_KEY') || 'none' || Deno.env.get('ROUTER_API_KEY') || 'none' || 'none').trim();
-const DEFAULT_MODEL = (Deno.env.get('OMNIROUTE_MODEL') || 'free' || 'free').trim();
+// Normalize any configured base URL (with or without a trailing "/v1")
+// into the canonical chat-completions endpoint.
+export function omnirouteEndpoint(raw?: string | null): string {
+  const base = (raw ?? Deno.env.get('OMNIROUTE_BASE_URL') ?? 'https://api.omniroute.ai/v1')
+    .trim()
+    .replace(/\/+$/, '')
+    .replace(/\/v1$/, '');
+  return `${base}/v1/chat/completions`;
+}
+const OMNIROUTE_API_KEY = (Deno.env.get('OMNIROUTE_API_KEY') || Deno.env.get('ROUTER_API_KEY') || '').trim();
+const DEFAULT_MODEL = (Deno.env.get('OMNIROUTE_MODEL') || 'auto').trim();
 const DEFAULT_SYSTEM_PROMPT = hermesSystemPrompt;
 
 /**
@@ -91,7 +99,7 @@ export async function omniRoute(prompt, options = {}) {
         requestBody.response_format = { type: 'json_object' };
       }
 
-      const response = await fetch(`${OMNIROUTE_BASE_URL}/v1/chat/completions`, {
+      const response = await fetch(omnirouteEndpoint(), {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${OMNIROUTE_API_KEY}`,
@@ -227,7 +235,7 @@ export async function omniRouteStream(prompt, options = {}, onChunk) {
       requestBody.response_format = { type: 'json_object' };
     }
 
-    const response = await fetch(`${OMNIROUTE_BASE_URL}/v1/chat/completions`, {
+    const response = await fetch(omnirouteEndpoint(), {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${OMNIROUTE_API_KEY}`,
