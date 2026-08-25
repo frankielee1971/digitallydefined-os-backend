@@ -6,10 +6,11 @@
  * All AI requests flow through OmniRoute's single endpoint with auto-fallback.
  */
 
-import { hermesSystemPrompt } from './hermesSystemPrompt';
+import { hermesSystemPrompt } from './hermesSystemPrompt.ts';
 
 // Initialize AgentOps for monitoring
-let agentops = null;
+// deno-lint-ignore no-explicit-any
+let agentops: any = null;
 try {
   const AgentOps = await import('agentops');
   const AGENTOPS_API_KEY = Deno.env.get('AGENTOPS_API_KEY');
@@ -20,7 +21,7 @@ try {
     console.log('⚠️  AgentOps API key not found - running without monitoring');
   }
 } catch (e) {
-  console.log('⚠️  AgentOps not available:', e.message);
+  console.log('⚠️  AgentOps not available:', (e as Error)?.message || String(e));
 }
 
 // Normalize any configured base URL (with or without a trailing "/v1")
@@ -48,7 +49,15 @@ const DEFAULT_SYSTEM_PROMPT = hermesSystemPrompt;
  * @param {string[]} options.fallbackModels - Models to try if primary fails
  * @returns {Promise<{reply: string, provider: string, model: string, error: string|null}>}
  */
-export async function omniRoute(prompt, options = {}) {
+type OmniRouteOptions = {
+  model?: string;
+  systemPrompt?: string;
+  jsonMode?: boolean;
+  timeout?: number;
+  fallbackModels?: string[];
+};
+
+export async function omniRoute(prompt: string, options: OmniRouteOptions = {}) {
   if (!OMNIROUTE_API_KEY) {
     return {
       reply: '',
@@ -86,7 +95,7 @@ export async function omniRoute(prompt, options = {}) {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-      const requestBody = {
+      const requestBody: Record<string, unknown> = {
         model: currentModel,
         messages: [
           { role: 'system', content: systemPrompt },
@@ -149,7 +158,7 @@ export async function omniRoute(prompt, options = {}) {
       };
 
     } catch (error) {
-      lastError = error.message || String(error);
+      lastError = (error as Error)?.message || String(error);
       console.error(`[OmniRoute] Model ${currentModel} failed:`, lastError);
       
       // End trace on error
@@ -194,7 +203,7 @@ export async function omniRoute(prompt, options = {}) {
  * @param {function} onChunk - Callback for each streaming chunk
  * @returns {Promise<{reply: string, provider: string, model: string, error: string|null}>}
  */
-export async function omniRouteStream(prompt, options = {}, onChunk) {
+export async function omniRouteStream(prompt: string, options: OmniRouteOptions = {}, onChunk?: (chunk: string, fullReply: string) => void) {
   if (!OMNIROUTE_API_KEY) {
     return {
       reply: '',
@@ -222,7 +231,7 @@ export async function omniRouteStream(prompt, options = {}, onChunk) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-    const requestBody = {
+    const requestBody: Record<string, unknown> = {
       model,
       messages: [
         { role: 'system', content: systemPrompt },
@@ -252,6 +261,9 @@ export async function omniRouteStream(prompt, options = {}, onChunk) {
       throw new Error(`OmniRoute streaming error: ${response.status} ${response.statusText} - ${errorText.slice(0, 200)}`);
     }
 
+    if (!response.body) {
+      throw new Error('OmniRoute streaming response has no body');
+    }
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let fullReply = '';
@@ -296,7 +308,7 @@ export async function omniRouteStream(prompt, options = {}, onChunk) {
       reply: '',
       provider: null,
       model: null,
-      error: error.message || String(error),
+      error: (error as Error)?.message || String(error),
     };
   }
 }

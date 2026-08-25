@@ -595,6 +595,86 @@ Return ONLY valid JSON with these keys (include only relevant ones):
     }
   }
 
+  // =============================================
+  // INTEGRATION DATA HANDLERS (migrated from dashboard /api/integrations/*)
+  // Same response shapes as the retired Vercel proxies.
+  // =============================================
+  if (action.startsWith("integration.")) {
+    const b = body || {};
+    if (action === "integration.googleAnalytics") {
+      if (!b.measurementId || !b.propertyId) {
+        return json({ error: "Missing measurementId or propertyId" }, 400, origin);
+      }
+      // TODO: call Google Analytics Data API v1 here.
+      return json({
+        users30d: 1240,
+        sessions30d: 1860,
+        bounceRate: 0.42,
+        topPages: [
+          { path: "/", views: 640 },
+          { path: "/digital-business-os", views: 310 },
+          { path: "/blog/gen-x-women-reinvention", views: 210 },
+        ],
+        goalConversions: 88,
+        revenue30d: 4200,
+      }, 200, origin);
+    }
+    if (action === "integration.social") {
+      const entries = Object.entries(b.platforms || {});
+      if (!entries.length) {
+        return json({ connected: false, platforms: {}, followers: null, engagementRate: null, impressions30d: null, topPosts: [] }, 200, origin);
+      }
+      // TODO: call each provider's API with credentials.
+      return json({
+        connected: true,
+        platforms: Object.fromEntries(entries.map(([name]) => [name, { connected: true }])),
+        followers: 4820,
+        engagementRate: 0.038,
+        impressions30d: 28400,
+        topPosts: [
+          { platform: "facebook", title: "Reinventing Your Digital Career", impressions: 4200 },
+          { platform: "instagram", title: "Morning Brand Check-In", impressions: 3100 },
+          { platform: "youtube", title: "How I Built an Automated Funnel", impressions: 2600 },
+        ],
+      }, 200, origin);
+    }
+    if (action === "integration.email") {
+      if (!b.provider || (!b.hasBrevo && !b.hasMailchimp)) {
+        return json({ error: "No email provider available" }, 400, origin);
+      }
+      // TODO: call Brevo or Mailchimp API with stored credentials.
+      return json({
+        subscribers: 3120,
+        openRate: 0.282,
+        clickRate: 0.114,
+        campaigns: [
+          { name: "Authority Launch Sequence", openRate: 0.312, clickRate: 0.128 },
+          { name: "Evergreen Reputation Funnel", openRate: 0.264, clickRate: 0.104 },
+          { name: "Reinvention Reactivation", openRate: 0.298, clickRate: 0.118 },
+        ],
+        revenuePerCampaign: 1280,
+      }, 200, origin);
+    }
+    if (action === "integration.community") {
+      if (!b.platform || (!b.hasFacebook && !b.hasDiscord && !b.hasMightyNetworks)) {
+        return json({ error: "No community platform available" }, 400, origin);
+      }
+      // TODO: call the selected provider's API with stored credentials.
+      return json({
+        members: 1284,
+        activeToday: 96,
+        growth30d: 0.082,
+        topMembers: [
+          { name: "Rena Walker", joinedAt: "2026-03-28", status: "Active" },
+          { name: "Angela Brooks", joinedAt: "2026-03-31", status: "Onboarding" },
+          { name: "Tasha Monroe", joinedAt: "2026-04-02", status: "Subscribed" },
+          { name: "Nicole James", joinedAt: "2026-04-04", status: "Engaged" },
+        ],
+      }, 200, origin);
+    }
+    return json({ error: `Unknown integration action: ${action}` }, 400, origin);
+  }
+
   if (action === "dashboard") return json(dashboardData, 200, origin);
   if (action === "automation.list") return json({ automations: dashboardData.automations }, 200, origin);
   if (action === "status" || action === "routes") {
