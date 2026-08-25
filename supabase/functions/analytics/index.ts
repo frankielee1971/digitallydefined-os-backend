@@ -372,14 +372,17 @@ const getCandidates = (): Candidate[] => {
   // Normalize: accept base URL with or without a trailing "/v1".
   const rawBase = (Deno.env.get("OMNIROUTE_BASE_URL") || "https://api.omniroute.ai/v1").trim();
   const baseUrl = rawBase.replace(/\/+$/, "").replace(/\/v1$/, "") + "/v1";
-  return [
-    {
-      provider: "omniroute",
-      model: Deno.env.get("OMNIROUTE_MODEL") || "auto",
-      key: omnirouteKey,
-      url: `${baseUrl}/chat/completions`,
-    },
-  ];
+  const models = [
+    Deno.env.get("OMNIROUTE_MODEL") || "auto",
+    Deno.env.get("OMNIROUTE_FALLBACK_MODEL_1"),
+    Deno.env.get("OMNIROUTE_FALLBACK_MODEL_2"),
+  ].filter((m): m is string => Boolean(m));
+  return models.map((model) => ({
+    provider: "omniroute",
+    model,
+    key: omnirouteKey,
+    url: `${baseUrl}/chat/completions`,
+  }));
 };
 
 async function runAI(systemPrompt: string, userPrompt: string) {
@@ -409,8 +412,27 @@ async function runAI(systemPrompt: string, userPrompt: string) {
         lastError = `${c.provider} HTTP ${response.status}: ${await response.text()}`;
         continue;
       }
-      const payload = await response.json();
-      const reply = payload?.choices?.[0]?.message?.content || "";
+      // May answer with SSE even when stream:false (e.g. the "auto" model).
+      const bodyText = await response.text();
+      let reply = "";
+      if (bodyText.trimStart().startsWith("data:") ||
+          (response.headers.get("content-type") || "").includes("text/event-stream")) {
+        for (const line of bodyText.split("\n")) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith("data:")) continue;
+          const payload = trimmed.slice(5).trim();
+          if (!payload || payload === "[DONE]") continue;
+          try {
+            const parsed = JSON.parse(payload);
+            reply += parsed?.choices?.[0]?.delta?.content
+              || parsed?.choices?.[0]?.message?.content
+              || "";
+          } catch { /* skip invalid chunk */ }
+        }
+      } else {
+        const payloadJson = JSON.parse(bodyText);
+        reply = payloadJson?.choices?.[0]?.message?.content || "";
+      }
       if (reply) return { reply, provider: c.provider, model: c.model };
       lastError = `${c.provider} returned an empty response`;
     } catch (error) {
@@ -528,3 +550,4 @@ Deno.serve(async (req: Request) => {
     );
   }
 });
+

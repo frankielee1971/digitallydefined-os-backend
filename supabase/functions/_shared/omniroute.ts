@@ -57,6 +57,38 @@ type OmniRouteOptions = {
   fallbackModels?: string[];
 };
 
+/**
+ * Extract the assistant reply from either a standard JSON chat response or
+ * an SSE stream body (this OmniRoute instance may stream even when
+ * stream:false is requested, e.g. for the "auto" model).
+ */
+async function extractReply(response: Response): Promise<string> {
+  const contentType = response.headers.get('content-type') || '';
+  const text = await response.text();
+
+  if (!contentType.includes('text/event-stream') && !text.trimStart().startsWith('data:')) {
+    const data = JSON.parse(text);
+    return data?.choices?.[0]?.message?.content || '';
+  }
+
+  let reply = '';
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('data:')) continue;
+    const payload = trimmed.slice(5).trim();
+    if (!payload || payload === '[DONE]') continue;
+    try {
+      const parsed = JSON.parse(payload);
+      reply += parsed?.choices?.[0]?.delta?.content
+        || parsed?.choices?.[0]?.message?.content
+        || '';
+    } catch {
+      // Skip invalid JSON chunks
+    }
+  }
+  return reply;
+}
+
 export async function omniRoute(prompt: string, options: OmniRouteOptions = {}) {
   if (!OMNIROUTE_API_KEY) {
     return {
@@ -134,14 +166,7 @@ export async function omniRoute(prompt: string, options: OmniRouteOptions = {}) 
         throw new Error(errorMessage);
       }
 
-      const contentType = response.headers.get('content-type') || '';
-      if (!contentType.includes('application/json')) {
-        const text = await response.text();
-        throw new Error(`OmniRoute returned non-JSON response: ${text.slice(0, 200)}`);
-      }
-
-      const data = await response.json();
-      const rawReply = data?.choices?.[0]?.message?.content || '';
+      const rawReply = await extractReply(response);
 
       if (!rawReply) {
         throw new Error('OmniRoute returned empty response');

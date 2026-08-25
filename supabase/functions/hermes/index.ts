@@ -52,13 +52,47 @@ async function insertRow(table: string, payload: JsonRecord, upsert = false) {
 }
 
 const parseJsonReply = (reply: string) => {
-  const cleaned = reply
+  let cleaned = reply
+    // Strip reasoning/think artifacts some free models append.
+    .replace(/<think[^>]*>[\s\S]*?<\/think[^>]*>/gi, "")
+    .replace(/<\/?think[^>]*>/gi, "")
     .replace(/^```(?:json)?\s*/gm, "")
     .replace(/```\s*$/gm, "")
     .replace(/^```/g, "")
     .replace(/```$/g, "")
     .trim();
-  return JSON.parse(cleaned);
+
+  const attempts = [cleaned];
+  // Some free models over-escape quotes (\"key\") — undo that.
+  attempts.push(cleaned.replace(/\\"/g, '"').replace(/\\'/g, "'"));
+
+  // Final fallback: extract the first balanced {...} block, ignoring braces
+  // inside string literals, and drop any trailing garbage the model appended.
+  const source = attempts[1];
+  const start = source.indexOf("{");
+  if (start >= 0) {
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let i = start; i < source.length; i++) {
+      const ch = source[i];
+      if (escaped) { escaped = false; continue; }
+      if (ch === "\\") { escaped = true; continue; }
+      if (ch === '"') { inString = !inString; continue; }
+      if (inString) continue;
+      if (ch === "{") depth++;
+      else if (ch === "}") {
+        depth--;
+        if (depth === 0) { attempts.push(source.slice(start, i + 1)); break; }
+      }
+    }
+  }
+
+  let lastError: unknown = null;
+  for (const candidate of attempts) {
+    try { return JSON.parse(candidate); } catch (err) { lastError = err; }
+  }
+  throw lastError instanceof Error ? lastError : new Error("Failed to parse model JSON");
 };
 
 // ============================================================
@@ -80,14 +114,17 @@ const getCandidates = (): Candidate[] => {
   // Normalize: accept base URL with or without a trailing "/v1".
   const rawBase = (Deno.env.get("OMNIROUTE_BASE_URL") || "https://api.omniroute.ai/v1").trim();
   const baseUrl = rawBase.replace(/\/+$/, "").replace(/\/v1$/, "") + "/v1";
-  return [
-    {
-      provider: "omniroute",
-      model: Deno.env.get("OMNIROUTE_MODEL") || "auto",
-      key: omnirouteKey,
-      url: `${baseUrl}/chat/completions`,
-    },
-  ];
+  const models = [
+    Deno.env.get("OMNIROUTE_MODEL") || "auto",
+    Deno.env.get("OMNIROUTE_FALLBACK_MODEL_1"),
+    Deno.env.get("OMNIROUTE_FALLBACK_MODEL_2"),
+  ].filter((m): m is string => Boolean(m));
+  return models.map((model) => ({
+    provider: "omniroute",
+    model,
+    key: omnirouteKey,
+    url: `${baseUrl}/chat/completions`,
+  }));
 };
 
 async function runAI(systemPrompt: string, userPrompt: string, jsonMode = false) {
@@ -110,7 +147,7 @@ async function runAI(systemPrompt: string, userPrompt: string, jsonMode = false)
             { role: "user", content: userPrompt },
           ],
           temperature: jsonMode ? 0.35 : 0.7,
-          max_tokens: jsonMode ? 1400 : 4000,
+          max_tokens: jsonMode ? 4000 : 8000,
           ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
         }),
         signal: AbortSignal.timeout(90000),
@@ -121,8 +158,28 @@ async function runAI(systemPrompt: string, userPrompt: string, jsonMode = false)
         continue;
       }
 
-      const payload = await response.json();
-      const reply = payload?.choices?.[0]?.message?.content || "";
+      // This OmniRoute instance may answer with SSE even when stream:false
+      // (e.g. the "auto" model) — parse both shapes.
+      const bodyText = await response.text();
+      let reply = "";
+      if (bodyText.trimStart().startsWith("data:") ||
+          (response.headers.get("content-type") || "").includes("text/event-stream")) {
+        for (const line of bodyText.split("\n")) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith("data:")) continue;
+          const payload = trimmed.slice(5).trim();
+          if (!payload || payload === "[DONE]") continue;
+          try {
+            const parsed = JSON.parse(payload);
+            reply += parsed?.choices?.[0]?.delta?.content
+              || parsed?.choices?.[0]?.message?.content
+              || "";
+          } catch { /* skip invalid chunk */ }
+        }
+      } else {
+        const payloadJson = JSON.parse(bodyText);
+        reply = payloadJson?.choices?.[0]?.message?.content || "";
+      }
       if (!reply) {
         lastError = `${candidate.provider} returned an empty response`;
         continue;
@@ -736,3 +793,4 @@ Return ONLY valid JSON with these keys (include only relevant ones):
     }, 502, origin);
   }
 });
+
