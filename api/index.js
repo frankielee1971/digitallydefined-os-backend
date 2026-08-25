@@ -40,6 +40,7 @@ const ALLOWED_ACTIONS = new Set([
   'integration.social',
   'integration.email',
   'integration.community',
+  'license.verify',
 ]);
 
 const GET_ONLY_ACTIONS = new Set([

@@ -36,6 +36,7 @@ export const AUTHED_ACTIONS = [
   "integration.social",
   "integration.email",
   "integration.community",
+  "license.verify",
 ] as const;
 
 /** GET-only actions. */

@@ -732,6 +732,64 @@ Return ONLY valid JSON with these keys (include only relevant ones):
     return json({ error: `Unknown integration action: ${action}` }, 400, origin);
   }
 
+  // =============================================
+  // PREMIUM GATING — Gumroad license verification
+  // Required secrets: GUMROAD_API_KEY (access token), GUMROAD_PRODUCT_PERMALINK
+  // Graceful fail-closed for callers when unconfigured.
+  // =============================================
+  if (action === "license.verify") {
+    const licenseKey = String(body.licenseKey || body.license || "").trim();
+    const email = String(body.email || "").trim();
+    if (!licenseKey) {
+      return json({ licensed: false, reason: "missing_license_key" }, 400, origin);
+    }
+    const gumroadToken = (Deno.env.get("GUMROAD_API_KEY") || "").trim();
+    const permalink = (Deno.env.get("GUMROAD_PRODUCT_PERMALINK") || "").trim();
+    if (!gumroadToken || !permalink) {
+      return json({ licensed: false, reason: "licensing_not_configured" }, 200, origin);
+    }
+    try {
+      const form = new URLSearchParams({
+        product_permalink: permalink,
+        license_key: licenseKey,
+        ...(email ? { email } : {}),
+      });
+      const gr = await fetch("https://api.gumroad.com/v2/licenses/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: form.toString(),
+        signal: AbortSignal.timeout(15000),
+      });
+      const data = await gr.json();
+      if (!data?.success || data?.purchase?.refunded) {
+        return json({ licensed: false, reason: data?.success ? "refunded" : "invalid_license" }, 200, origin);
+      }
+      // Record entitlement (guarded — missing table never breaks verification).
+      try {
+        await insertRow("premium_entitlements", {
+          license_key: licenseKey.slice(-6).padStart(licenseKey.length, "*"),
+          email: data.purchase?.email || email || null,
+          product_permalink: permalink,
+          verified_at: new Date().toISOString(),
+          source: "hermes.license.verify",
+        });
+      } catch { /* table may not exist yet */ }
+      return json({
+        licensed: true,
+        email: data.purchase?.email || null,
+        product: data.product_name || permalink,
+        sale_timestamp: data.purchase?.sale_timestamp || null,
+      }, 200, origin);
+    } catch (error) {
+      console.error("[license.verify]", error);
+      return json({
+        licensed: false,
+        reason: "verification_error",
+        detail: error instanceof Error ? error.message : String(error),
+      }, 502, origin);
+    }
+  }
+
   if (action === "dashboard") return json(dashboardData, 200, origin);
   if (action === "automation.list") return json({ automations: dashboardData.automations }, 200, origin);
   if (action === "status" || action === "routes") {
